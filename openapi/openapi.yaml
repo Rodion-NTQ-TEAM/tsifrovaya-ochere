@@ -1,0 +1,511 @@
+openapi: 3.0.3
+
+info:
+  title: Цифровая очередь нового поколения
+  description: |
+    API системы управления электронной очередью для отделений Почты России.
+    Команда «Искусные нейроны» — хакатон Postcode Challenge.
+
+    ## Основные сущности
+    - **Отделение (Branch)** — физическая точка обслуживания
+    - **Услуга (Service)** — тип операции (посылка, письмо, пенсия и т.д.)
+    - **Очередь (Queue)** — виртуальная очередь на услугу в отделении
+    - **Талон (Ticket)** — запись клиента в очередь
+    - **Окно (Window)** — рабочее место оператора
+    - **Оператор (Operator)** — сотрудник отделения
+
+    ## Жизненный цикл талона
+    `waiting → called → serving → served` либо `cancelled` / `no_show`
+  version: 0.1.0
+  contact:
+    name: Команда «Искусные нейроны»
+    url: https://github.com/Rodion-NTQ-TEAM/tsifrovaya-ochere
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Локальная разработка
+  - url: https://api.tsifrovaya-ochered.local/api/v1
+    description: Тестовый стенд
+
+tags:
+  - name: branches
+    description: Отделения почты
+  - name: services
+    description: Услуги
+  - name: queues
+    description: Очереди
+  - name: tickets
+    description: Талончики
+  - name: windows
+    description: Окна обслуживания
+  - name: operators
+    description: Операторы
+  - name: analytics
+    description: Аналитика и статистика
+
+paths:
+  # ============================================================
+  # BRANCHES
+  # ============================================================
+  /branches:
+    get:
+      tags: [branches]
+      summary: Список отделений
+      parameters:
+        - name: city
+          in: query
+          schema: { type: string }
+          description: Фильтр по городу
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Branch' }
+
+  /branches/{branchId}:
+    get:
+      tags: [branches]
+      summary: Отделение по ID
+      parameters:
+        - $ref: '#/components/parameters/BranchId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Branch' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /branches/{branchId}/queues:
+    get:
+      tags: [branches, queues]
+      summary: Очереди в отделении
+      parameters:
+        - $ref: '#/components/parameters/BranchId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Queue' }
+
+  # ============================================================
+  # SERVICES
+  # ============================================================
+  /services:
+    get:
+      tags: [services]
+      summary: Список услуг
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Service' }
+
+  # ============================================================
+  # QUEUES
+  # ============================================================
+  /queues:
+    get:
+      tags: [queues]
+      summary: Все активные очереди
+      parameters:
+        - name: branchId
+          in: query
+          schema: { type: string }
+        - name: serviceId
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, paused, closed]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Queue' }
+    post:
+      tags: [queues]
+      summary: Создать очередь
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QueueCreate' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Queue' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /queues/{queueId}:
+    get:
+      tags: [queues]
+      summary: Очередь по ID
+      parameters:
+        - $ref: '#/components/parameters/QueueId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Queue' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [queues]
+      summary: Изменить статус очереди (open/paused/closed)
+      parameters:
+        - $ref: '#/components/parameters/QueueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [open, paused, closed]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Queue' }
+
+  /queues/{queueId}/stats:
+    get:
+      tags: [queues, analytics]
+      summary: Статистика очереди
+      parameters:
+        - $ref: '#/components/parameters/QueueId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QueueStats' }
+
+  # ============================================================
+  # TICKETS
+  # ============================================================
+  /queues/{queueId}/tickets:
+    post:
+      tags: [tickets]
+      summary: Взять талон в очередь
+      description: Создаёт талон и ставит клиента в конец очереди
+      parameters:
+        - $ref: '#/components/parameters/QueueId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TicketCreate' }
+      responses:
+        '201':
+          description: Талон создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '409':
+          description: Очередь закрыта
+    get:
+      tags: [tickets]
+      summary: Список талонов в очереди
+      parameters:
+        - $ref: '#/components/parameters/QueueId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [waiting, called, serving, served, cancelled, no_show]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Ticket' }
+
+  /tickets/{ticketId}:
+    get:
+      tags: [tickets]
+      summary: Талон по ID
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tickets/{ticketId}/cancel:
+    post:
+      tags: [tickets]
+      summary: Отменить талон (клиент передумал)
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+
+  /tickets/{ticketId}/position:
+    get:
+      tags: [tickets]
+      summary: Текущая позиция талона в очереди
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticketId: { type: string }
+                  position: { type: integer }
+                  estimatedWaitMinutes: { type: integer }
+
+  # ============================================================
+  # WINDOWS & OPERATORS
+  # ============================================================
+  /windows:
+    get:
+      tags: [windows]
+      summary: Список окон
+      parameters:
+        - name: branchId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Window' }
+
+  /windows/{windowId}/call-next:
+    post:
+      tags: [windows]
+      summary: Вызвать следующего из очереди
+      parameters:
+        - name: windowId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                queueId: { type: string }
+      responses:
+        '200':
+          description: Следующий талон вызван
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '204':
+          description: Очередь пуста
+
+  /operators:
+    get:
+      tags: [operators]
+      summary: Список операторов
+      parameters:
+        - name: branchId
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Operator' }
+
+components:
+  # ============================================================
+  # PARAMETERS
+  # ============================================================
+  parameters:
+    BranchId:
+      name: branchId
+      in: path
+      required: true
+      schema: { type: string, example: "br-001" }
+    QueueId:
+      name: queueId
+      in: path
+      required: true
+      schema: { type: string, example: "q-42" }
+    TicketId:
+      name: ticketId
+      in: path
+      required: true
+      schema: { type: string, example: "t-0001" }
+
+  # ============================================================
+  # RESPONSES
+  # ============================================================
+  responses:
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  # ============================================================
+  # SCHEMAS
+  # ============================================================
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string, example: "NOT_FOUND" }
+        message: { type: string, example: "Очередь не найдена" }
+
+    Branch:
+      type: object
+      properties:
+        id: { type: string, example: "br-001" }
+        name: { type: string, example: "Отделение №1234" }
+        city: { type: string, example: "Москва" }
+        address: { type: string }
+        lat: { type: number, format: double }
+        lon: { type: number, format: double }
+        workingHours:
+          type: string
+          example: "Пн-Пт 09:00-20:00, Сб 10:00-18:00"
+
+    Service:
+      type: object
+      properties:
+        id: { type: string, example: "svc-parcel" }
+        name: { type: string, example: "Отправка посылки" }
+        code: { type: string, example: "PARCEL_SEND" }
+        avgDurationMinutes: { type: integer, example: 8 }
+
+    Queue:
+      type: object
+      properties:
+        id: { type: string, example: "q-42" }
+        branchId: { type: string }
+        serviceId: { type: string }
+        status:
+          type: string
+          enum: [open, paused, closed]
+        waitingCount: { type: integer, example: 7 }
+        avgWaitMinutes: { type: integer, example: 12 }
+        createdAt: { type: string, format: date-time }
+
+    QueueCreate:
+      type: object
+      required: [branchId, serviceId]
+      properties:
+        branchId: { type: string }
+        serviceId: { type: string }
+        maxCapacity: { type: integer, nullable: true }
+
+    QueueStats:
+      type: object
+      properties:
+        queueId: { type: string }
+        servedToday: { type: integer }
+        cancelledToday: { type: integer }
+        avgWaitMinutes: { type: integer }
+        avgServiceMinutes: { type: integer }
+        peakHour: { type: string, example: "14:00-15:00" }
+
+    Ticket:
+      type: object
+      properties:
+        id: { type: string, example: "t-0001" }
+        queueId: { type: string }
+        number: { type: integer, example: 42, description: "Номер талона, который видит клиент" }
+        status:
+          type: string
+          enum: [waiting, called, serving, served, cancelled, no_show]
+        clientName: { type: string, nullable: true }
+        clientPhone: { type: string, nullable: true }
+        position: { type: integer, description: "Позиция в очереди (1 = первый)" }
+        windowId: { type: string, nullable: true }
+        operatorId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        calledAt: { type: string, format: date-time, nullable: true }
+        servedAt: { type: string, format: date-time, nullable: true }
+        estimatedWaitMinutes: { type: integer }
+
+    TicketCreate:
+      type: object
+      properties:
+        clientName: { type: string, nullable: true }
+        clientPhone: { type: string, nullable: true }
+        priority:
+          type: string
+          enum: [normal, priority, disabled]
+          default: normal
+
+    Window:
+      type: object
+      properties:
+        id: { type: string, example: "w-3" }
+        branchId: { type: string }
+        number: { type: integer, example: 3 }
+        status:
+          type: string
+          enum: [idle, busy, closed]
+        currentTicketId: { type: string, nullable: true }
+        operatorId: { type: string, nullable: true }
+
+    Operator:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        branchId: { type: string }
+        windowId: { type: string, nullable: true }
+        status:
+          type: string
+          enum: [online, break, offline]
