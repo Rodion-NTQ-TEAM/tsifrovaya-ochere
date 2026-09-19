@@ -3,47 +3,52 @@ openapi: 3.0.3
 info:
   title: Цифровая очередь нового поколения
   description: |
-    API системы управления электронной очередью для отделений Почты России.
-    Команда «Искусные нейроны» — хакатон Postcode Challenge.
+    REST API системы управления электронной очередью для отделений Почты России.
+    Команда «Искусные нейроны» — хакатон PostCode Challenge.
 
-    ## Основные сущности
-    - **Отделение (Branch)** — физическая точка обслуживания
-    - **Услуга (Service)** — тип операции (посылка, письмо, пенсия и т.д.)
-    - **Очередь (Queue)** — виртуальная очередь на услугу в отделении
-    - **Талон (Ticket)** — запись клиента в очередь
-    - **Окно (Window)** — рабочее место оператора
-    - **Оператор (Operator)** — сотрудник отделения
-
-    ## Жизненный цикл талона
-    `waiting → called → serving → served` либо `cancelled` / `no_show`
-  version: 0.1.0
+    Три канала входа: предварительная запись (APPOINTMENT), QR в отделении (QR), живая очередь (LIVE).
+    Источник истины для типов — `src/types/`.
+  version: 0.2.0
   contact:
     name: Команда «Искусные нейроны»
     url: https://github.com/Rodion-NTQ-TEAM/tsifrovaya-ochere
 
 servers:
-  - url: http://localhost:8000/api/v1
-    description: Локальная разработка
-  - url: https://api.tsifrovaya-ochered.local/api/v1
-    description: Тестовый стенд
+  - url: http://localhost:3000/api
+    description: Локальная разработка (Next.js)
 
 tags:
+  - name: health
   - name: branches
-    description: Отделения почты
   - name: services
-    description: Услуги
-  - name: queues
-    description: Очереди
-  - name: tickets
-    description: Талончики
   - name: windows
-    description: Окна обслуживания
   - name: operators
-    description: Операторы
+  - name: queues
+  - name: qr
+  - name: tickets
+  - name: appointments
+  - name: sessions
+  - name: operator
+  - name: admin
   - name: analytics
-    description: Аналитика и статистика
+  - name: events
 
 paths:
+
+  # ============================================================
+  # HEALTH
+  # ============================================================
+  /health:
+    get:
+      tags: [health]
+      summary: Проверка состояния сервиса
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+
   # ============================================================
   # BRANCHES
   # ============================================================
@@ -51,17 +56,6 @@ paths:
     get:
       tags: [branches]
       summary: Список отделений
-      parameters:
-        - name: city
-          in: query
-          schema: { type: string }
-          description: Фильтр по городу
-        - name: limit
-          in: query
-          schema: { type: integer, default: 20, maximum: 100 }
-        - name: offset
-          in: query
-          schema: { type: integer, default: 0 }
       responses:
         '200':
           description: OK
@@ -83,31 +77,17 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Branch' }
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /branches/{branchId}/queues:
-    get:
-      tags: [branches, queues]
-      summary: Очереди в отделении
-      parameters:
-        - $ref: '#/components/parameters/BranchId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Queue' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ============================================================
   # SERVICES
   # ============================================================
-  /services:
+  /branches/{branchId}/services:
     get:
       tags: [services]
-      summary: Список услуг
+      summary: Услуги отделения
+      parameters:
+        - $ref: '#/components/parameters/BranchId'
       responses:
         '200':
           description: OK
@@ -120,22 +100,12 @@ paths:
   # ============================================================
   # QUEUES
   # ============================================================
-  /queues:
+  /branches/{branchId}/queues:
     get:
       tags: [queues]
-      summary: Все активные очереди
+      summary: Очереди (зоны) отделения
       parameters:
-        - name: branchId
-          in: query
-          schema: { type: string }
-        - name: serviceId
-          in: query
-          schema: { type: string }
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [open, paused, closed]
+        - $ref: '#/components/parameters/BranchId'
       responses:
         '200':
           description: OK
@@ -144,212 +114,422 @@ paths:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Queue' }
+
+  # ============================================================
+  # QR
+  # ============================================================
+  /qr/{code}:
+    get:
+      tags: [qr]
+      summary: Информация о QR-коде
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/QrCode' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================================================
+  # TICKETS
+  # ============================================================
+  /tickets:
     post:
-      tags: [queues]
-      summary: Создать очередь
+      tags: [tickets]
+      summary: Создать талон (живая очередь / QR)
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/QueueCreate' }
+            schema: { $ref: '#/components/schemas/CreateTicketRequest' }
+      responses:
+        '201':
+          description: Талон создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Дубликат активного талона
+
+  /tickets/qr:
+    post:
+      tags: [tickets, qr]
+      summary: Получить талон по QR-коду
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTicketByQrRequest' }
+      responses:
+        '201':
+          description: Талон создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /tickets/{ticketId}:
+    get:
+      tags: [tickets]
+      summary: Информация о талоне
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [tickets]
+      summary: Отменить талон
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      responses:
+        '200':
+          description: Отменён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+        '409':
+          description: Нельзя отменить в текущем статусе
+
+  /tickets/{ticketId}/session:
+    post:
+      tags: [tickets, sessions]
+      summary: Восстановить сессию после потери связи
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RestoreSessionRequest' }
+      responses:
+        '200':
+          description: Сессия восстановлена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ============================================================
+  # APPOINTMENTS
+  # ============================================================
+  /appointments:
+    post:
+      tags: [appointments]
+      summary: Создать предварительную запись
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAppointmentRequest' }
+      responses:
+        '201':
+          description: Запись создана
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+        '409':
+          description: Слот занят
+
+  /branches/{branchId}/slots:
+    get:
+      tags: [appointments]
+      summary: Свободные слоты для предзаписи
+      parameters:
+        - $ref: '#/components/parameters/BranchId'
+        - name: serviceId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SlotsResponse' }
+
+  # ============================================================
+  # OPERATOR
+  # ============================================================
+  /operator/windows/{windowId}/open:
+    post:
+      tags: [operator]
+      summary: Открыть окно
+      parameters:
+        - $ref: '#/components/parameters/WindowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenWindowRequest' }
+      responses:
+        '200':
+          description: Окно открыто
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WindowActionResponse' }
+
+  /operator/windows/{windowId}/close:
+    post:
+      tags: [operator]
+      summary: Закрыть окно
+      parameters:
+        - $ref: '#/components/parameters/WindowId'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CloseWindowRequest' }
+      responses:
+        '200':
+          description: Окно закрыто
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WindowActionResponse' }
+
+  /operator/windows/{windowId}/call-next:
+    post:
+      tags: [operator]
+      summary: Вызвать следующего клиента
+      parameters:
+        - $ref: '#/components/parameters/WindowId'
+      responses:
+        '200':
+          description: Клиент вызван
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CallNextResponse' }
+        '204':
+          description: Очередь пуста
+
+  /operator/windows/{windowId}/finish:
+    post:
+      tags: [operator]
+      summary: Завершить обслуживание
+      parameters:
+        - $ref: '#/components/parameters/WindowId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WindowActionResponse' }
+
+  /operator/windows/{windowId}/return:
+    post:
+      tags: [operator]
+      summary: Вернуть клиента в очередь
+      parameters:
+        - $ref: '#/components/parameters/WindowId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WindowActionResponse' }
+
+  /operator/windows/{windowId}/redirect:
+    post:
+      tags: [operator]
+      summary: Перенаправить клиента
+      parameters:
+        - $ref: '#/components/parameters/WindowId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RedirectTicketRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Ticket' }
+
+  /operator/tickets/live:
+    post:
+      tags: [operator]
+      summary: Добавить клиента из живой очереди
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddLiveTicketRequest' }
+      responses:
+        '201':
+          description: Талон создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TicketResponse' }
+
+  /operator/issues:
+    post:
+      tags: [operator]
+      summary: Зафиксировать проблему
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportIssueRequest' }
+      responses:
+        '201':
+          description: Зафиксировано
+
+  /operator/queue:
+    get:
+      tags: [operator]
+      summary: Очередь в реальном времени
+      parameters:
+        - name: branchId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiveQueueResponse' }
+
+  # ============================================================
+  # ADMIN
+  # ============================================================
+  /admin/windows:
+    post:
+      tags: [admin]
+      summary: Создать окно
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWindowRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Window' }
+
+  /admin/services:
+    post:
+      tags: [admin]
+      summary: Создать услугу
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateServiceRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Service' }
+
+  /admin/operators:
+    post:
+      tags: [admin]
+      summary: Создать оператора
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOperatorRequest' }
+      responses:
+        '201':
+          description: Создано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Operator' }
+
+  /admin/queues:
+    post:
+      tags: [admin]
+      summary: Создать очередь (зону)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateQueueRequest' }
       responses:
         '201':
           description: Создано
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Queue' }
-        '400':
-          $ref: '#/components/responses/BadRequest'
 
-  /queues/{queueId}:
+  /admin/priority-config:
     get:
-      tags: [queues]
-      summary: Очередь по ID
-      parameters:
-        - $ref: '#/components/parameters/QueueId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Queue' }
-        '404':
-          $ref: '#/components/responses/NotFound'
-    patch:
-      tags: [queues]
-      summary: Изменить статус очереди (open/paused/closed)
-      parameters:
-        - $ref: '#/components/parameters/QueueId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum: [open, paused, closed]
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Queue' }
-
-  /queues/{queueId}/stats:
-    get:
-      tags: [queues, analytics]
-      summary: Статистика очереди
-      parameters:
-        - $ref: '#/components/parameters/QueueId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/QueueStats' }
-
-  # ============================================================
-  # TICKETS
-  # ============================================================
-  /queues/{queueId}/tickets:
-    post:
-      tags: [tickets]
-      summary: Взять талон в очередь
-      description: Создаёт талон и ставит клиента в конец очереди
-      parameters:
-        - $ref: '#/components/parameters/QueueId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: '#/components/schemas/TicketCreate' }
-      responses:
-        '201':
-          description: Талон создан
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Ticket' }
-        '409':
-          description: Очередь закрыта
-    get:
-      tags: [tickets]
-      summary: Список талонов в очереди
-      parameters:
-        - $ref: '#/components/parameters/QueueId'
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum: [waiting, called, serving, served, cancelled, no_show]
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Ticket' }
-
-  /tickets/{ticketId}:
-    get:
-      tags: [tickets]
-      summary: Талон по ID
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Ticket' }
-        '404':
-          $ref: '#/components/responses/NotFound'
-
-  /tickets/{ticketId}/cancel:
-    post:
-      tags: [tickets]
-      summary: Отменить талон (клиент передумал)
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Ticket' }
-
-  /tickets/{ticketId}/position:
-    get:
-      tags: [tickets]
-      summary: Текущая позиция талона в очереди
-      parameters:
-        - $ref: '#/components/parameters/TicketId'
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ticketId: { type: string }
-                  position: { type: integer }
-                  estimatedWaitMinutes: { type: integer }
-
-  # ============================================================
-  # WINDOWS & OPERATORS
-  # ============================================================
-  /windows:
-    get:
-      tags: [windows]
-      summary: Список окон
+      tags: [admin]
+      summary: Получить правила приоритета
       parameters:
         - name: branchId
           in: query
+          required: true
           schema: { type: string }
       responses:
         '200':
           description: OK
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: '#/components/schemas/Window' }
-
-  /windows/{windowId}/call-next:
-    post:
-      tags: [windows]
-      summary: Вызвать следующего из очереди
+              schema: { $ref: '#/components/schemas/PriorityConfig' }
+    put:
+      tags: [admin]
+      summary: Обновить правила приоритета
       parameters:
-        - name: windowId
-          in: path
+        - name: branchId
+          in: query
           required: true
           schema: { type: string }
       requestBody:
+        required: true
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                queueId: { type: string }
+            schema: { $ref: '#/components/schemas/PriorityConfig' }
       responses:
         '200':
-          description: Следующий талон вызван
+          description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Ticket' }
-        '204':
-          description: Очередь пуста
+              schema: { $ref: '#/components/schemas/PriorityConfig' }
 
-  /operators:
+  /admin/queue:
     get:
-      tags: [operators]
-      summary: Список операторов
+      tags: [admin]
+      summary: Очередь в реальном времени
       parameters:
         - name: branchId
           in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiveQueueResponse' }
+
+  /admin/deviations:
+    get:
+      tags: [admin]
+      summary: Отклонения и незавершённые талоны
+      parameters:
+        - name: branchId
+          in: query
+          required: true
           schema: { type: string }
       responses:
         '200':
@@ -358,154 +538,670 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/Operator' }
+                items: { $ref: '#/components/schemas/Deviation' }
+
+  # ============================================================
+  # ANALYTICS
+  # ============================================================
+  /analytics/summary:
+    get:
+      tags: [analytics]
+      summary: Сводная аналитика
+      parameters:
+        - name: branchId
+          in: query
+          required: true
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsSummary' }
+
+  /analytics/windows:
+    get:
+      tags: [analytics]
+      summary: Загрузка окон
+      parameters:
+        - name: branchId
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WindowLoad' }
+
+  # ============================================================
+  # EVENTS
+  # ============================================================
+  /events:
+    get:
+      tags: [events]
+      summary: Журнал событий
+      parameters:
+        - name: ticketId
+          in: query
+          schema: { type: string }
+        - name: branchId
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventsResponse' }
 
 components:
-  # ============================================================
-  # PARAMETERS
-  # ============================================================
+
   parameters:
     BranchId:
       name: branchId
       in: path
       required: true
-      schema: { type: string, example: "br-001" }
-    QueueId:
-      name: queueId
-      in: path
-      required: true
-      schema: { type: string, example: "q-42" }
+      schema: { type: string, format: uuid }
     TicketId:
       name: ticketId
       in: path
       required: true
-      schema: { type: string, example: "t-0001" }
+      schema: { type: string, format: uuid }
+    WindowId:
+      name: windowId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
-  # ============================================================
-  # RESPONSES
-  # ============================================================
   responses:
     NotFound:
-      description: Ресурс не найден
+      description: Не найдено
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
     BadRequest:
       description: Некорректный запрос
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Error' }
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  # ============================================================
-  # SCHEMAS
-  # ============================================================
   schemas:
-    Error:
+
+    # ---------- Общие ----------
+    ErrorResponse:
       type: object
       properties:
-        code: { type: string, example: "NOT_FOUND" }
-        message: { type: string, example: "Очередь не найдена" }
+        code: { type: string }
+        message: { type: string }
+        details: { type: object, nullable: true }
 
+    HealthResponse:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, degraded, down] }
+        version: { type: string }
+        db: { type: string, enum: [up, down] }
+
+    # ---------- Enums ----------
+    TicketSource:
+      type: string
+      enum: [APPOINTMENT, QR, LIVE]
+
+    TicketStatus:
+      type: string
+      enum: [CREATED, WAITING, CALLED, SERVING, COMPLETED, CANCELLED, NO_SHOW, RETURNED, TRANSFERRED]
+
+    QueueEntryStatus:
+      type: string
+      enum: [WAITING, CALLED, SERVING, COMPLETED, CANCELLED, REMOVED]
+
+    WindowStatus:
+      type: string
+      enum: [CLOSED, OPEN, PAUSED, CLOSING]
+
+    AppointmentStatus:
+      type: string
+      enum: [BOOKED, CHECKED_IN, CANCELLED, COMPLETED, NO_SHOW]
+
+    NotificationStatus:
+      type: string
+      enum: [PENDING, SENT, FAILED]
+
+    NotificationType:
+      type: string
+      enum: [TICKET_CREATED, TICKET_CALLED, TICKET_FINISHED, APPOINTMENT_REMINDER, APPOINTMENT_CANCELLED]
+
+    EventType:
+      type: string
+      enum:
+        - TICKET_CREATED
+        - TICKET_CALLED
+        - TICKET_STARTED
+        - TICKET_FINISHED
+        - TICKET_RETURNED
+        - TICKET_REDIRECTED
+        - TICKET_CANCELLED
+        - TICKET_NO_SHOW
+        - TICKET_SESSION_RESTORED
+        - WINDOW_OPENED
+        - WINDOW_CLOSED
+        - WINDOW_CLOSED_WITH_ACTIVE
+        - WINDOW_ISSUE_REPORTED
+        - SERVICE_RESTARTED
+        - NOTIFICATION_FAILED
+        - INTEGRATION_TIMEOUT
+
+    IssueType:
+      type: string
+      enum: [TECHNICAL, OPERATIONAL]
+
+    ActiveClientAction:
+      type: string
+      enum: [finish_current, return_to_queue]
+
+    # ---------- Сущности ----------
     Branch:
       type: object
+      required: [id, code, name, address, timezone, isActive, createdAt]
       properties:
-        id: { type: string, example: "br-001" }
-        name: { type: string, example: "Отделение №1234" }
-        city: { type: string, example: "Москва" }
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
         address: { type: string }
-        lat: { type: number, format: double }
-        lon: { type: number, format: double }
-        workingHours:
-          type: string
-          example: "Пн-Пт 09:00-20:00, Сб 10:00-18:00"
+        timezone: { type: string, example: Europe/Moscow }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
 
     Service:
       type: object
+      required: [id, branchId, code, name, durationMinutes, priorityWeight, isActive, createdAt]
       properties:
-        id: { type: string, example: "svc-parcel" }
-        name: { type: string, example: "Отправка посылки" }
-        code: { type: string, example: "PARCEL_SEND" }
-        avgDurationMinutes: { type: integer, example: 8 }
-
-    Queue:
-      type: object
-      properties:
-        id: { type: string, example: "q-42" }
-        branchId: { type: string }
-        serviceId: { type: string }
-        status:
-          type: string
-          enum: [open, paused, closed]
-        waitingCount: { type: integer, example: 7 }
-        avgWaitMinutes: { type: integer, example: 12 }
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        durationMinutes: { type: integer }
+        priorityWeight: { type: integer }
+        isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
-
-    QueueCreate:
-      type: object
-      required: [branchId, serviceId]
-      properties:
-        branchId: { type: string }
-        serviceId: { type: string }
-        maxCapacity: { type: integer, nullable: true }
-
-    QueueStats:
-      type: object
-      properties:
-        queueId: { type: string }
-        servedToday: { type: integer }
-        cancelledToday: { type: integer }
-        avgWaitMinutes: { type: integer }
-        avgServiceMinutes: { type: integer }
-        peakHour: { type: string, example: "14:00-15:00" }
-
-    Ticket:
-      type: object
-      properties:
-        id: { type: string, example: "t-0001" }
-        queueId: { type: string }
-        number: { type: integer, example: 42, description: "Номер талона, который видит клиент" }
-        status:
-          type: string
-          enum: [waiting, called, serving, served, cancelled, no_show]
-        clientName: { type: string, nullable: true }
-        clientPhone: { type: string, nullable: true }
-        position: { type: integer, description: "Позиция в очереди (1 = первый)" }
-        windowId: { type: string, nullable: true }
-        operatorId: { type: string, nullable: true }
-        createdAt: { type: string, format: date-time }
-        calledAt: { type: string, format: date-time, nullable: true }
-        servedAt: { type: string, format: date-time, nullable: true }
-        estimatedWaitMinutes: { type: integer }
-
-    TicketCreate:
-      type: object
-      properties:
-        clientName: { type: string, nullable: true }
-        clientPhone: { type: string, nullable: true }
-        priority:
-          type: string
-          enum: [normal, priority, disabled]
-          default: normal
 
     Window:
       type: object
+      required: [id, branchId, number, status, serviceIds, createdAt]
       properties:
-        id: { type: string, example: "w-3" }
-        branchId: { type: string }
-        number: { type: integer, example: 3 }
-        status:
-          type: string
-          enum: [idle, busy, closed]
-        currentTicketId: { type: string, nullable: true }
-        operatorId: { type: string, nullable: true }
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        number: { type: integer }
+        name: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/WindowStatus' }
+        operatorId: { type: string, format: uuid, nullable: true }
+        serviceIds:
+          type: array
+          items: { type: string, format: uuid }
+        openedAt: { type: string, format: date-time, nullable: true }
+        closedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
 
     Operator:
       type: object
+      required: [id, branchId, employeeCode, name, isActive, createdAt]
       properties:
-        id: { type: string }
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        employeeCode: { type: string }
         name: { type: string }
-        branchId: { type: string }
-        windowId: { type: string, nullable: true }
-        status:
-          type: string
-          enum: [online, break, offline]
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Queue:
+      type: object
+      required: [id, branchId, code, name, isActive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        zone: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    QrCode:
+      type: object
+      required: [id, queueId, code, isActive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        queueId: { type: string, format: uuid }
+        code: { type: string }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, nullable: true }
+
+    Appointment:
+      type: object
+      required: [id, branchId, serviceId, sessionId, scheduledAt, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/AppointmentStatus' }
+        ticketId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Ticket:
+      type: object
+      required: [id, branchId, serviceId, sessionId, source, number, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        queueId: { type: string, format: uuid, nullable: true }
+        appointmentId: { type: string, format: uuid, nullable: true }
+        sessionId: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/TicketSource' }
+        number: { type: string, example: "A-001" }
+        status: { $ref: '#/components/schemas/TicketStatus' }
+        currentWindowId: { type: string, format: uuid, nullable: true }
+        currentQueueEntryId: { type: string, format: uuid, nullable: true }
+        parentTicketId: { type: string, format: uuid, nullable: true }
+        bookedSlotTime: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        calledAt: { type: string, format: date-time, nullable: true }
+        servingAt: { type: string, format: date-time, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        cancelledAt: { type: string, format: date-time, nullable: true }
+        updatedAt: { type: string, format: date-time }
+
+    QueueEntry:
+      type: object
+      required: [id, ticketId, queueId, serviceId, priorityLevel, sequenceNumber, status, enteredAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid }
+        queueId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        priorityLevel: { type: integer }
+        sequenceNumber: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/QueueEntryStatus' }
+        enteredAt: { type: string, format: date-time }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+        calledAt: { type: string, format: date-time, nullable: true }
+        servingAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        windowId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    TicketEvent:
+      type: object
+      required: [id, ticketId, eventType, metadata, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        ticketId: { type: string, format: uuid }
+        eventType: { $ref: '#/components/schemas/EventType' }
+        oldStatus:
+          allOf:
+            - $ref: '#/components/schemas/TicketStatus'
+          nullable: true
+        newStatus:
+          allOf:
+            - $ref: '#/components/schemas/TicketStatus'
+          nullable: true
+        operatorId: { type: string, format: uuid, nullable: true }
+        windowId: { type: string, format: uuid, nullable: true }
+        serviceId: { type: string, format: uuid, nullable: true }
+        queueId: { type: string, format: uuid, nullable: true }
+        metadata: { type: object }
+        createdAt: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      required: [id, ticketId, type, channel, status, attempts, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        channel: { type: string }
+        status: { $ref: '#/components/schemas/NotificationStatus' }
+        attempts: { type: integer }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+        sentAt: { type: string, format: date-time, nullable: true }
+        lastError: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PriorityConfig:
+      type: object
+      required: [sources, aging, return, liveQueue, window]
+      properties:
+        sources:
+          type: object
+          required: [APPOINTMENT, QR, LIVE]
+          properties:
+            APPOINTMENT:
+              type: object
+              required: [baseWeight, bonus, graceMinutes]
+              properties:
+                baseWeight: { type: integer }
+                bonus: { type: integer }
+                graceMinutes: { type: integer }
+            QR:
+              type: object
+              required: [baseWeight]
+              properties:
+                baseWeight: { type: integer }
+            LIVE:
+              type: object
+              required: [baseWeight, maxWaitMinutes]
+              properties:
+                baseWeight: { type: integer }
+                maxWaitMinutes: { type: integer }
+        aging:
+          type: object
+          required: [enabled, factor, cap]
+          properties:
+            enabled: { type: boolean }
+            factor: { type: number }
+            cap: { type: integer }
+        return:
+          type: object
+          required: [enabled, boost, maxBoost]
+          properties:
+            enabled: { type: boolean }
+            boost: { type: integer }
+            maxBoost: { type: integer }
+        liveQueue:
+          type: object
+          required: [maxWaitMinutes, emergencyBoostAfter, emergencyBoost]
+          properties:
+            maxWaitMinutes: { type: integer }
+            emergencyBoostAfter: { type: integer }
+            emergencyBoost: { type: integer }
+        window:
+          type: object
+          required: [closeWithActiveClient]
+          properties:
+            closeWithActiveClient: { $ref: '#/components/schemas/ActiveClientAction' }
+
+    BookedSlot:
+      type: object
+      required: [id, branchId, serviceId, slotTime]
+      properties:
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        slotTime: { type: string, format: date-time }
+        ticketId: { type: string, format: uuid, nullable: true }
+
+        # ---------- Дополнительные сущности ----------
+    Role:
+      type: string
+      enum: [CLIENT, OPERATOR, MANAGER]
+
+    PriorityRule:
+      type: object
+      required: [id, branchId, name, isActive, configuration, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        name: { type: string }
+        isActive: { type: boolean }
+        configuration: { $ref: '#/components/schemas/PriorityConfig' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TicketSequence:
+      type: object
+      required: [branchId, ticketDate, prefix, lastNumber]
+      properties:
+        branchId: { type: string, format: uuid }
+        ticketDate: { type: string, format: date }
+        prefix: { type: string }
+        lastNumber: { type: integer }
+
+    DeviceSession:
+      type: object
+      required: [sessionId, createdAt, expiresAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    SlotsQuery:
+      type: object
+      required: [branchId, serviceId, date]
+      properties:
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        date: { type: string, format: date }
+
+    EventsQuery:
+      type: object
+      properties:
+        ticketId: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        limit: { type: integer, default: 100 }
+
+    # ---------- Request / Response ----------
+    CreateTicketRequest:
+      type: object
+      required: [branchId, serviceId, source]
+      properties:
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/TicketSource' }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+        sessionId: { type: string, format: uuid, nullable: true }
+        clientName: { type: string, nullable: true }
+
+    CreateTicketByQrRequest:
+      type: object
+      required: [qrCode, serviceId]
+      properties:
+        qrCode: { type: string }
+        serviceId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid, nullable: true }
+
+    TicketResponse:
+      type: object
+      required: [ticket, sessionToken]
+      properties:
+        ticket: { $ref: '#/components/schemas/Ticket' }
+        queueEntry: { $ref: '#/components/schemas/QueueEntry', nullable: true }
+        queuePosition: { type: integer, nullable: true }
+        expectedWaitMinutes: { type: integer, nullable: true }
+        sessionToken: { type: string }
+
+    RestoreSessionRequest:
+      type: object
+      required: [sessionToken]
+      properties:
+        sessionToken: { type: string }
+
+    CreateAppointmentRequest:
+      type: object
+      required: [branchId, serviceId, scheduledAt]
+      properties:
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time }
+        sessionId: { type: string, format: uuid, nullable: true }
+        clientName: { type: string, nullable: true }
+        clientPhone: { type: string, nullable: true }
+
+    SlotsResponse:
+      type: object
+      properties:
+        slots:
+          type: array
+          items: { $ref: '#/components/schemas/BookedSlot' }
+
+    OpenWindowRequest:
+      type: object
+      required: [serviceIds]
+      properties:
+        serviceIds:
+          type: array
+          items: { type: string, format: uuid }
+
+    CloseWindowRequest:
+      type: object
+      properties:
+        activeClientAction: { $ref: '#/components/schemas/ActiveClientAction' }
+
+    WindowActionResponse:
+      type: object
+      properties:
+        window: { $ref: '#/components/schemas/Window' }
+        ticket: { $ref: '#/components/schemas/Ticket', nullable: true }
+
+    AddLiveTicketRequest:
+      type: object
+      required: [branchId, serviceId]
+      properties:
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        clientName: { type: string, nullable: true }
+
+    RedirectTicketRequest:
+      type: object
+      properties:
+        targetWindowId: { type: string, format: uuid, nullable: true }
+        targetServiceId: { type: string, format: uuid, nullable: true }
+        targetQueueId: { type: string, format: uuid, nullable: true }
+
+    ReportIssueRequest:
+      type: object
+      required: [branchId, type, description]
+      properties:
+        branchId: { type: string, format: uuid }
+        windowId: { type: string, format: uuid, nullable: true }
+        type: { $ref: '#/components/schemas/IssueType' }
+        description: { type: string }
+
+    CallNextResponse:
+      type: object
+      properties:
+        ticket: { $ref: '#/components/schemas/Ticket', nullable: true }
+        queueEntry: { $ref: '#/components/schemas/QueueEntry', nullable: true }
+
+    CreateWindowRequest:
+      type: object
+      required: [branchId, number]
+      properties:
+        branchId: { type: string, format: uuid }
+        number: { type: integer }
+        name: { type: string, nullable: true }
+
+    CreateServiceRequest:
+      type: object
+      required: [branchId, code, name, durationMinutes]
+      properties:
+        branchId: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        durationMinutes: { type: integer }
+        priorityWeight: { type: integer, default: 0 }
+
+    CreateOperatorRequest:
+      type: object
+      required: [branchId, employeeCode, name]
+      properties:
+        branchId: { type: string, format: uuid }
+        employeeCode: { type: string }
+        name: { type: string }
+
+    CreateQueueRequest:
+      type: object
+      required: [branchId, code, name]
+      properties:
+        branchId: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        zone: { type: string, nullable: true }
+
+    LiveQueueResponse:
+      type: object
+      required: [branchId, queueId, entries, updatedAt]
+      properties:
+        branchId: { type: string, format: uuid }
+        queueId: { type: string, format: uuid }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/QueueEntryWithTicket' }
+        updatedAt: { type: string, format: date-time }
+
+    QueueEntryWithTicket:
+      allOf:
+        - $ref: '#/components/schemas/QueueEntry'
+        - type: object
+          required: [ticket]
+          properties:
+            ticket: { $ref: '#/components/schemas/Ticket' }
+            expectedWaitMinutes: { type: integer, nullable: true }
+
+    AnalyticsSummary:
+      type: object
+      required: [branchId, from, to, totalTickets, servedTickets, cancelledTickets, noShowTickets, avgWaitMinutes, maxWaitMinutes, avgServiceMinutes, ticketsBySource]
+      properties:
+        branchId: { type: string, format: uuid }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        totalTickets: { type: integer }
+        servedTickets: { type: integer }
+        cancelledTickets: { type: integer }
+        noShowTickets: { type: integer }
+        avgWaitMinutes: { type: number }
+        maxWaitMinutes: { type: integer }
+        avgServiceMinutes: { type: number }
+        ticketsBySource:
+          type: object
+          required: [APPOINTMENT, QR, LIVE]
+          properties:
+            APPOINTMENT: { type: integer }
+            QR: { type: integer }
+            LIVE: { type: integer }
+
+    WindowLoad:
+      type: object
+      required: [windowId, windowNumber, servedCount, avgServiceMinutes, loadPercent]
+      properties:
+        windowId: { type: string, format: uuid }
+        windowNumber: { type: integer }
+        servedCount: { type: integer }
+        avgServiceMinutes: { type: number }
+        loadPercent: { type: number }
+
+    Deviation:
+      type: object
+      required: [type, description, createdAt]
+      properties:
+        ticketId: { type: string, format: uuid, nullable: true }
+        type: { type: string }
+        description: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    EventsResponse:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items: { $ref: '#/components/schemas/TicketEvent' }
