@@ -31,7 +31,7 @@ export interface Service {
     branchId: string;
     code: string;
     name: string;
-    description?: string;
+    description?: string | null;
     /** Длительность в минутах, кратна 15 */
     durationMinutes: number;
     /** Вес услуги в алгоритме приоритета */
@@ -47,7 +47,7 @@ export interface Window {
     id: string;
     branchId: string;
     number: number;
-    name?: string;
+    name?: string | null;
     status: WindowStatus;
     operatorId: string | null;
     /** Услуги, которые умеет оказывать окно */
@@ -77,7 +77,7 @@ export interface Queue {
     branchId: string;
     code: string;
     name: string;
-    zone?: string;
+    zone: string | null;
     isActive: boolean;
     createdAt: Date;
 }

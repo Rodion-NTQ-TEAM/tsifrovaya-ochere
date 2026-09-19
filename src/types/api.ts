@@ -42,15 +42,15 @@ export interface CreateTicketRequest {
     branchId: string;
     serviceId: string;
     source: TicketSource;
-    scheduledAt?: string;
-    sessionId?: string;
-    clientName?: string;
+    scheduledAt: string | null;
+    sessionId: string | null;
+    clientName: string | null;
 }
 
 export interface CreateTicketByQrRequest {
     qrCode: string;
     serviceId: string;
-    sessionId?: string;
+    sessionId: string | null;
 }
 
 export interface TicketResponse {
@@ -73,9 +73,9 @@ export interface CreateAppointmentRequest {
     branchId: string;
     serviceId: string;
     scheduledAt: string;
-    sessionId?: string;
-    clientName?: string;
-    clientPhone?: string;
+    sessionId: string | null;
+    clientName: string | null;
+    clientPhone: string | null;
 }
 
 export interface SlotsQuery {
@@ -110,18 +110,18 @@ export interface WindowActionResponse {
 export interface AddLiveTicketRequest {
     branchId: string;
     serviceId: string;
-    clientName?: string;
+    clientName: string | null;
 }
 
 export interface RedirectTicketRequest {
-    targetWindowId?: string;
-    targetServiceId?: string;
-    targetQueueId?: string;
+    targetWindowId: string | null;
+    targetServiceId: string | null;
+    targetQueueId: string | null;
 }
 
 export interface ReportIssueRequest {
     branchId: string;
-    windowId?: string;
+    windowId: string | null;
     type: IssueType;
     description: string;
 }
@@ -137,14 +137,14 @@ export interface CallNextResponse {
 export interface CreateWindowRequest {
     branchId: string;
     number: number;
-    name?: string;
+    name: string | null;
 }
 
 export interface CreateServiceRequest {
     branchId: string;
     code: string;
     name: string;
-    description?: string;
+    description: string | null;
     durationMinutes: number;
     priorityWeight?: number;
 }
@@ -159,7 +159,7 @@ export interface CreateQueueRequest {
     branchId: string;
     code: string;
     name: string;
-    zone?: string;
+    zone: string | null;
 }
 
 // ============================================================

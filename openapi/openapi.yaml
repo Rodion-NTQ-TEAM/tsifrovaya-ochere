@@ -715,6 +715,7 @@ components:
     # ---------- Сущности ----------
     Branch:
       type: object
+      required: [id, code, name, address, timezone, isActive, createdAt]
       properties:
         id: { type: string, format: uuid }
         code: { type: string }
@@ -726,6 +727,7 @@ components:
 
     Service:
       type: object
+      required: [id, branchId, code, name, durationMinutes, priorityWeight, isActive, createdAt]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
@@ -739,6 +741,7 @@ components:
 
     Window:
       type: object
+      required: [id, branchId, number, status, serviceIds, createdAt]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
@@ -755,6 +758,7 @@ components:
 
     Operator:
       type: object
+      required: [id, branchId, employeeCode, name, isActive, createdAt]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
@@ -765,6 +769,7 @@ components:
 
     Queue:
       type: object
+      required: [id, branchId, code, name, isActive, createdAt]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
@@ -776,6 +781,7 @@ components:
 
     QrCode:
       type: object
+      required: [id, queueId, code, isActive, createdAt]
       properties:
         id: { type: string, format: uuid }
         queueId: { type: string, format: uuid }
@@ -786,6 +792,7 @@ components:
 
     Appointment:
       type: object
+      required: [id, branchId, serviceId, sessionId, scheduledAt, status, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
@@ -799,6 +806,7 @@ components:
 
     Ticket:
       type: object
+      required: [id, branchId, serviceId, sessionId, source, number, status, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
@@ -822,6 +830,7 @@ components:
 
     QueueEntry:
       type: object
+      required: [id, ticketId, queueId, serviceId, priorityLevel, sequenceNumber, status, enteredAt, createdAt]
       properties:
         id: { type: string, format: uuid }
         ticketId: { type: string, format: uuid }
@@ -840,12 +849,19 @@ components:
 
     TicketEvent:
       type: object
+      required: [id, ticketId, eventType, metadata, createdAt]
       properties:
         id: { type: integer, format: int64 }
         ticketId: { type: string, format: uuid }
         eventType: { $ref: '#/components/schemas/EventType' }
-        oldStatus: { type: string, nullable: true }
-        newStatus: { type: string, nullable: true }
+        oldStatus:
+          allOf:
+            - $ref: '#/components/schemas/TicketStatus'
+          nullable: true
+        newStatus:
+          allOf:
+            - $ref: '#/components/schemas/TicketStatus'
+          nullable: true
         operatorId: { type: string, format: uuid, nullable: true }
         windowId: { type: string, format: uuid, nullable: true }
         serviceId: { type: string, format: uuid, nullable: true }
@@ -855,6 +871,7 @@ components:
 
     Notification:
       type: object
+      required: [id, ticketId, type, channel, status, attempts, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         ticketId: { type: string, format: uuid }
@@ -870,56 +887,116 @@ components:
 
     PriorityConfig:
       type: object
+      required: [sources, aging, return, liveQueue, window]
       properties:
         sources:
           type: object
+          required: [APPOINTMENT, QR, LIVE]
           properties:
             APPOINTMENT:
               type: object
+              required: [baseWeight, bonus, graceMinutes]
               properties:
                 baseWeight: { type: integer }
                 bonus: { type: integer }
                 graceMinutes: { type: integer }
             QR:
               type: object
+              required: [baseWeight]
               properties:
                 baseWeight: { type: integer }
             LIVE:
               type: object
+              required: [baseWeight, maxWaitMinutes]
               properties:
                 baseWeight: { type: integer }
                 maxWaitMinutes: { type: integer }
         aging:
           type: object
+          required: [enabled, factor, cap]
           properties:
             enabled: { type: boolean }
             factor: { type: number }
             cap: { type: integer }
         return:
           type: object
+          required: [enabled, boost, maxBoost]
           properties:
             enabled: { type: boolean }
             boost: { type: integer }
             maxBoost: { type: integer }
         liveQueue:
           type: object
+          required: [maxWaitMinutes, emergencyBoostAfter, emergencyBoost]
           properties:
             maxWaitMinutes: { type: integer }
             emergencyBoostAfter: { type: integer }
             emergencyBoost: { type: integer }
         window:
           type: object
+          required: [closeWithActiveClient]
           properties:
             closeWithActiveClient: { $ref: '#/components/schemas/ActiveClientAction' }
 
     BookedSlot:
       type: object
+      required: [id, branchId, serviceId, slotTime]
       properties:
         id: { type: string, format: uuid }
         branchId: { type: string, format: uuid }
         serviceId: { type: string, format: uuid }
         slotTime: { type: string, format: date-time }
         ticketId: { type: string, format: uuid, nullable: true }
+
+        # ---------- Дополнительные сущности ----------
+    Role:
+      type: string
+      enum: [CLIENT, OPERATOR, MANAGER]
+
+    PriorityRule:
+      type: object
+      required: [id, branchId, name, isActive, configuration, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        name: { type: string }
+        isActive: { type: boolean }
+        configuration: { $ref: '#/components/schemas/PriorityConfig' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    TicketSequence:
+      type: object
+      required: [branchId, ticketDate, prefix, lastNumber]
+      properties:
+        branchId: { type: string, format: uuid }
+        ticketDate: { type: string, format: date }
+        prefix: { type: string }
+        lastNumber: { type: integer }
+
+    DeviceSession:
+      type: object
+      required: [sessionId, createdAt, expiresAt]
+      properties:
+        sessionId: { type: string, format: uuid }
+        ticketId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    SlotsQuery:
+      type: object
+      required: [branchId, serviceId, date]
+      properties:
+        branchId: { type: string, format: uuid }
+        serviceId: { type: string, format: uuid }
+        date: { type: string, format: date }
+
+    EventsQuery:
+      type: object
+      properties:
+        ticketId: { type: string, format: uuid }
+        branchId: { type: string, format: uuid }
+        limit: { type: integer, default: 100 }
 
     # ---------- Request / Response ----------
     CreateTicketRequest:
@@ -943,6 +1020,7 @@ components:
 
     TicketResponse:
       type: object
+      required: [ticket, sessionToken]
       properties:
         ticket: { $ref: '#/components/schemas/Ticket' }
         queueEntry: { $ref: '#/components/schemas/QueueEntry', nullable: true }
@@ -1061,6 +1139,7 @@ components:
 
     LiveQueueResponse:
       type: object
+      required: [branchId, queueId, entries, updatedAt]
       properties:
         branchId: { type: string, format: uuid }
         queueId: { type: string, format: uuid }
@@ -1073,12 +1152,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/QueueEntry'
         - type: object
+          required: [ticket]
           properties:
             ticket: { $ref: '#/components/schemas/Ticket' }
             expectedWaitMinutes: { type: integer, nullable: true }
 
     AnalyticsSummary:
       type: object
+      required: [branchId, from, to, totalTickets, servedTickets, cancelledTickets, noShowTickets, avgWaitMinutes, maxWaitMinutes, avgServiceMinutes, ticketsBySource]
       properties:
         branchId: { type: string, format: uuid }
         from: { type: string, format: date-time }
@@ -1092,6 +1173,7 @@ components:
         avgServiceMinutes: { type: number }
         ticketsBySource:
           type: object
+          required: [APPOINTMENT, QR, LIVE]
           properties:
             APPOINTMENT: { type: integer }
             QR: { type: integer }
@@ -1099,6 +1181,7 @@ components:
 
     WindowLoad:
       type: object
+      required: [windowId, windowNumber, servedCount, avgServiceMinutes, loadPercent]
       properties:
         windowId: { type: string, format: uuid }
         windowNumber: { type: integer }
@@ -1108,6 +1191,7 @@ components:
 
     Deviation:
       type: object
+      required: [type, description, createdAt]
       properties:
         ticketId: { type: string, format: uuid, nullable: true }
         type: { type: string }
@@ -1116,6 +1200,7 @@ components:
 
     EventsResponse:
       type: object
+      required: [events]
       properties:
         events:
           type: array
