@@ -1,12 +1,6 @@
 'use client';
 import { useRouter, useParams } from 'next/navigation';
-
-const MOCK_SERVICES = [
-  { id: 'send', title: 'Отправка посылок и писем', desc: 'Прием отправлений, продажа упаковки' },
-  { id: 'receive', title: 'Получение посылок и писем', desc: 'Выдача по EMS, штрихкодам и извещениям' },
-  { id: 'finance', title: 'Финансовые услуги', desc: 'Пенсии, переводы, оплата ЖКХ, Почта Банк' },
-  { id: 'other', title: 'Прочие услуги', desc: 'Подписка, покупка товаров, заявления' },
-];
+import { MOCK_SERVICES } from '../../../../src/mocks/data';
 
 export default function ServicesPage() {
   const router = useRouter();

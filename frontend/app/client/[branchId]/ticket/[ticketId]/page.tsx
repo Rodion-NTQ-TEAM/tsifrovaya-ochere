@@ -1,37 +1,70 @@
 'use client';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { TicketResponse, TicketStatus } from '../../../../types';
 
 export default function TicketPage() {
   const { branchId, ticketId } = useParams();
   const router = useRouter();
 
-  // Состояния талона согласно ТЗ
-  const [status, setStatus] = useState('В очереди');
-  const [eta, setEta] = useState('~14 минут');
+  const [status, setStatus] = useState<string>('В очереди');
+  const [eta, setEta] = useState<string>('~14 минут');
   const [activeWindow, setActiveWindow] = useState<string | null>(null);
 
   useEffect(() => {
-    // 💾 ОБЯЗАТЕЛЬНОЕ ТРЕБОВАНИЕ ТЗ: Сохраняем сессию локально
-    const ticketData = { branchId, ticketId, date: new Date().toLocaleDateString() };
-    localStorage.setItem('ops_active_ticket', JSON.stringify(ticketData));
+    // поллинг статуса талона каждые 4 секунды
+    const checkStatusFromServer = async () => {
+      // try {
+      //   const savedSession = localStorage.getItem('ops_active_ticket');
+      //   if (!savedSession) return;
+        
+      //   const sessionData: TicketResponse = JSON.parse(savedSession);
+        
+      //   // Шлем запрос, авторизуясь через sessionToken от архитектора
+      //   const res = await fetch(`/api/v1/branches/${branchId}/tickets/${ticketId}`, {
+      //     headers: { 'Authorization': `Bearer ${sessionData.sessionToken}` }
+      //   });
+        
+      //   if (res.status === 200) {
+      //     const data: TicketResponse = await res.json();
+          
+      //     if (data.ticket.status === TicketStatus.CALLED) {
+      //       setStatus('Пройдите к окну');
+      //       setActiveWindow(data.ticket.currentWindowId || '4');
+      //       setEta('Сейчас');
+      //       if (navigator.vibrate) navigator.vibrate(200);
+      //     }
+      //   }
+      // } catch (e) {
+      //   console.error("Ошибка авто-обновления статуса талона", e);
+      // }
+    };
 
-    // ДЕМО-ЭФФЕКТ ДЛЯ ХАКАTOНА: Симулируем звонок с сервера (Вызов оператором) через 8 секунд
+    const pollingInterval = setInterval(checkStatusFromServer, 4000);
+
+    // ДЕМО-ЭФФЕКТ: Сработает автономно через 8 сек для демонстрации
     const demoTimer = setTimeout(() => {
       setStatus('Пройдите к окну');
       setActiveWindow('4');
       setEta('Сейчас');
-      
-      // Включаем вибрацию на телефоне (Web Vibration API), если поддерживается
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     }, 8000);
 
-    return () => clearTimeout(demoTimer);
+    return () => {
+      clearInterval(pollingInterval);
+      clearTimeout(demoTimer);
+    };
   }, [branchId, ticketId]);
+
+  const handleSwitchTimeTicket = () => {
+    if (confirm('Вы действительно хотите перенести запись на другое время?')) {
+      router.push(`/client/${branchId}/booking?reschedule=${ticketId}`);
+    }
+  };
 
   const handleCancelTicket = () => {
     if (confirm('Вы действительно хотите отменить запись и удалить талон?')) {
-      localStorage.removeItem('ops_active_ticket'); // очищаем сессию
+      localStorage.removeItem('ops_active_ticket');
       router.push(`/client/${branchId}/services`);
     }
   };
@@ -44,12 +77,10 @@ export default function TicketPage() {
           Электронный билет
         </span>
 
-        {/* Крупный номер талона */}
         <div className="text-6xl font-black text-blue-900 my-6 tracking-wider font-mono">
           {ticketId}
         </div>
 
-        {/* Динамический статус-бар */}
         <div className={`inline-flex items-center gap-2 px-5 py-2 rounded-2xl text-sm font-extrabold mb-6 transition-all ${
           activeWindow 
             ? 'bg-green-100 text-green-800 border border-green-200 animate-bounce' 
@@ -59,7 +90,6 @@ export default function TicketPage() {
           {status} {activeWindow && ` → ОКНО №${activeWindow}`}
         </div>
 
-        {/* Информационная сетка */}
         <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 grid grid-cols-2 gap-4 text-left text-xs mb-6">
           <div>
             <div className="text-slate-400 font-medium mb-0.5">Ожидание:</div>
@@ -71,13 +101,20 @@ export default function TicketPage() {
           </div>
         </div>
 
-        {/* Контроль отмены по ТЗ */}
-        <button
-          onClick={handleCancelTicket}
-          className="w-full py-3.5 bg-red-50 hover:bg-red-100/70 text-red-600 font-bold text-xs rounded-xl transition-colors active:scale-[0.98]"
-        >
-          Отменить запись
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={handleSwitchTimeTicket}
+            className="py-3.5 bg-blue-50 hover:bg-blue-100/70 text-blue-900 font-bold text-xs rounded-xl transition-colors active:scale-[0.98]"
+          >
+            Перенести время
+          </button>
+          <button
+            onClick={handleCancelTicket}
+            className="py-3.5 bg-red-50 hover:bg-red-100/70 text-red-600 font-bold text-xs rounded-xl transition-colors active:scale-[0.98]"
+          >
+            Отменить запись
+          </button>
+        </div>
       </div>
     </div>
   );

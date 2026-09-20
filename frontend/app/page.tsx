@@ -1,19 +1,43 @@
 'use client';
 import { useRouter } from 'next/navigation';
-
-const MOCK_BRANCHES = [
-  { id: '7701', city: 'г. Москва', address: 'ул. Ленина, д. 10', load: 'Низкая', color: 'text-green-600' },
-  { id: '1010', city: 'г. Москва', address: 'ул. Тверская, д. 7', load: 'Высокая', color: 'text-red-600' },
-  { id: '4004', city: 'г. Москва', address: 'пр-т Мира, д. 45', load: 'Умеренная', color: 'text-amber-600' },
-];
+import { useEffect, useState } from 'react';
+import { MOCK_BRANCHES } from '../src/mocks/data';
+import { TicketResponse } from './types';
 
 export default function BranchSelectionPage() {
   const router = useRouter();
+  const [checkingSession, setCheckingSession] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedSession = localStorage.getItem('ops_active_ticket');
+      if (savedSession) {
+        try {
+          const sessionData: TicketResponse = JSON.parse(savedSession);
+          // Восстановление сессии через sessionToken по архитектурному контракту
+          if (sessionData?.ticket?.branchId && sessionData?.ticket?.number && sessionData?.sessionToken) {
+            router.replace(`/client/${sessionData.ticket.branchId}/ticket/${sessionData.ticket.number}`);
+            return;
+          }
+        } catch (e) {
+          console.error("Ошибка десериализации сессии", e);
+        }
+      }
+      setCheckingSession(false);
+    }
+  }, [router]);
+
+  if (checkingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-slate-400 font-bold text-sm">
+        Проверка активных сессий Почты России...
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 p-4 text-slate-900">
       <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-slate-100">
-        {/* Фирменный почтовый стиль */}
         <div className="flex items-center justify-center gap-2 mb-4">
           <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center text-white font-black text-lg">P</div>
           <span className="font-bold tracking-wider text-blue-900 text-lg uppercase">Почта России</span>
