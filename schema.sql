@@ -1,42 +1,45 @@
 -- Создание типов (ENUM)
 CREATE TYPE appointment_status AS ENUM ('BOOKED', 'CHECKED_IN', 'CANCELLED', 'COMPLETED', 'NO_SHOW');
 CREATE TYPE ticket_source AS ENUM ('APPOINTMENT', 'QR', 'LIVE');
-CREATE TYPE ticket_status AS ENUM ('WAITING', 'CALLED', 'SERVING', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'RETURNED', 'TRANSFERRED');
+CREATE TYPE ticket_status AS ENUM ('CREATED', 'WAITING', 'CALLED', 'SERVING', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'RETURNED', 'TRANSFERRED');
 CREATE TYPE queue_entry_status AS ENUM ('WAITING', 'CALLED', 'SERVING', 'COMPLETED', 'CANCELLED', 'REMOVED');
+CREATE TYPE window_status AS ENUM ('CLOSED', 'OPEN', 'PAUSED', 'CLOSING');
 CREATE TYPE notification_status AS ENUM ('PENDING', 'SENT', 'FAILED');
 
--- 1. Отделения
+-- 1. Отделения (добавлено поле timezone)
 CREATE TABLE branches (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(255) NOT NULL,
     address TEXT,
+    timezone VARCHAR(50) NOT NULL DEFAULT 'Europe/Moscow',
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2. Услуги
+-- 2. Услуги (убран average_duration_seconds, добавлены branch_id, duration_minutes, priority_weight, уникальность по branch_id и code)
 CREATE TABLE services (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code VARCHAR(50) NOT NULL UNIQUE,
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    code VARCHAR(50) NOT NULL,
     name VARCHAR(255) NOT NULL,
     description TEXT,
-    average_duration_seconds INTEGER NOT NULL DEFAULT 300,
+    duration_minutes INTEGER NOT NULL DEFAULT 5,
+    priority_weight INTEGER NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(branch_id, code)
 );
 
--- 3. Окна обслуживания
+-- 3. Окна обслуживания (is_open заменен на status window_status, убраны текущие id оператора и талона)
 CREATE TABLE windows (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
     number INTEGER NOT NULL,
     name VARCHAR(100),
-    is_open BOOLEAN NOT NULL DEFAULT FALSE,
-    current_operator_id UUID,
-    current_ticket_id UUID,
+    status window_status NOT NULL DEFAULT 'CLOSED',
     opened_at TIMESTAMPTZ,
     closed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -103,7 +106,7 @@ CREATE TABLE appointments (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 10. Главная таблица талонов
+-- 10. Главная таблица талонов (добавлены parent_ticket_id и booked_slot_time)
 CREATE TABLE tickets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
@@ -112,10 +115,12 @@ CREATE TABLE tickets (
     session_id UUID NOT NULL,
     source ticket_source NOT NULL,
     number VARCHAR(20) NOT NULL,
-    status ticket_status NOT NULL DEFAULT 'WAITING',
+    status ticket_status NOT NULL DEFAULT 'CREATED',
     appointment_id UUID REFERENCES appointments(id),
     current_window_id UUID REFERENCES windows(id),
     current_queue_entry_id UUID,
+    parent_ticket_id UUID REFERENCES tickets(id),
+    booked_slot_time TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     called_at TIMESTAMPTZ,
     serving_at TIMESTAMPTZ,
@@ -193,10 +198,36 @@ CREATE TABLE notifications (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- 16. Новые таблицы: booked_slots и device_sessions
+CREATE TABLE booked_slots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+    service_id UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    slot_time TIMESTAMPTZ NOT NULL,
+    is_booked BOOLEAN NOT NULL DEFAULT FALSE,
+    session_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE device_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    branch_id UUID REFERENCES branches(id) ON DELETE SET NULL,
+    device_name VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(50),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Индексы для оптимизации и защиты от дублей
 CREATE INDEX idx_queue_entries_next ON queue_entries (queue_id, service_id, status, priority_level DESC, sequence_number ASC);
 CREATE INDEX idx_tickets_active ON tickets(branch_id, status) WHERE status IN ('WAITING', 'CALLED', 'SERVING');
 CREATE INDEX idx_ticket_events_ticket ON ticket_events(ticket_id, created_at);
+
+-- Уникальный индекс: один активный талон на сессию
+CREATE UNIQUE INDEX ux_active_ticket_per_session
+ON tickets(session_id)
+WHERE status IN ('WAITING', 'CALLED', 'SERVING');
 
 CREATE UNIQUE INDEX ux_active_ticket_window ON tickets(current_window_id) WHERE status IN ('CALLED', 'SERVING');
 CREATE UNIQUE INDEX ux_ticket_active_queue_entry ON queue_entries(ticket_id) WHERE status IN ('WAITING', 'CALLED', 'SERVING');
