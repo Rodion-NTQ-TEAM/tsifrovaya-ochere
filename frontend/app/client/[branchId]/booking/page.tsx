@@ -16,6 +16,20 @@ function BookingContent() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
 
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  });
+
+  const todayString = `Сегодня, ${dateFormatter.format(today)}`;
+  const tomorrowString = `Сегодня, ${dateFormatter.format(tomorrow)}`;
+  const target = day === 'today' ? today : tomorrow;
+  const scheduledDateStr = target.toISOString().slice(0, 10);
+
   const handleSelectTime = (time: string) => {
     setSelectedTime(time);
     setIsConfirming(true);
@@ -23,8 +37,6 @@ function BookingContent() {
 
   const handleFinalConfirm = async () => {
     try {
-      const scheduledDateStr = day === 'today' ? '2026-09-20' : '2026-09-21';
-      
       // const appointmentPayload: CreateAppointmentRequest = {
       //   branchId: branchId as string,
       //   serviceId: serviceId,
@@ -95,13 +107,13 @@ function BookingContent() {
                 onClick={() => setDay('today')}
                 className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all border ${day === 'today' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
               >
-                Сегодня, 20 сент.
+                {todayString}
               </button>
               <button
                 onClick={() => setDay('tomorrow')}
                 className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all border ${day === 'tomorrow' ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
               >
-                Завтра, 21 сент.
+                {tomorrowString}
               </button>
             </div>
 
@@ -132,7 +144,7 @@ function BookingContent() {
               </div>
               <div className="flex justify-between border-b border-slate-200/60 pb-2">
                 <span className="text-slate-400">Дата:</span>
-                <span className="font-bold text-slate-700">{day === 'today' ? 'Сегодня, 20 сентября' : 'Завтра, 21 сентября'}</span>
+                <span className="font-bold text-slate-700">{day === 'today' ? todayString : tomorrowString}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Выбранное время:</span>

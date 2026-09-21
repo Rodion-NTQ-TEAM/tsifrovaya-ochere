@@ -8,7 +8,6 @@ export default function OperatorLoginPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Сохраняем номер окна в сессию и переходим на рабочее место
     sessionStorage.setItem('operator_window', windowNum);
     router.push('/operator/workspace');
   };

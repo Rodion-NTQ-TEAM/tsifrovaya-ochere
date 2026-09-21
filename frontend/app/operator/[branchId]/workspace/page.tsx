@@ -1,5 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import { OPERATOR_SERVICES } from '../../../../src/mocks/data';
 import { 
   WindowStatus, 
   TicketSource, 
@@ -10,23 +12,14 @@ import {
   ReportIssueRequest,
   OpenWindowRequest,
   CloseWindowRequest
-} from '../../types';
-
-// Доступные услуги отделения для настройки окна оператора
-const OPERATOR_SERVICES = [
-  { id: 'send', code: 'SEND_POST', name: 'Отправка посылок и писем' },
-  { id: 'receive', code: 'RCV_POST', name: 'Получение посылок и писем' },
-  { id: 'finance', code: 'FIN_OPS', name: 'Финансовые услуги и пенсии' },
-  { id: 'another', code: 'ANOTHER', name: 'Подписки, покупки, заявления' },
-];
+} from '../../../types';
 
 export default function OperatorWorkspacePage() {
-  // Стейты управления окном обслуживания
   const [windowNumber, setWindowNumber] = useState<number>(1);
   const [windowStatus, setWindowStatus] = useState<WindowStatus>(WindowStatus.CLOSED);
   const [selectedServices, setSelectedServices] = useState<string[]>(['send', 'receive']);
+  const { branchId } = useParams();
   
-  // Стейты управления текущим талоном
   const [currentTicket, setCurrentTicket] = useState<any | null>(null);
 
   // Считываем номер окна из сессии при инициализации экрана
@@ -37,26 +30,26 @@ export default function OperatorWorkspacePage() {
     }
   }, []);
 
-  // 1. Открытие смены окна (POST /api/v1/operator/window/open)
+  // Открытие смены окна (POST /api/v1/operator/window/open)
   const handleOpenWindow = async () => {
     try {
       const openRequest: OpenWindowRequest = {
         serviceIds: selectedServices
       };
-      // Интеграция: await fetch(`/api/v1/operator/window/open`, { method: 'POST', body: JSON.stringify(openRequest) });
+      // await fetch(`/api/v1/operator/window/open`, { method: 'POST', body: JSON.stringify(openRequest) });
       setWindowStatus(WindowStatus.OPEN);
     } catch (e) {
       console.error("Ошибка открытия окна обслуживания", e);
     }
   };
 
-  // 2. Закрытие смены окна (POST /api/v1/operator/window/close)
+  // Закрытие смены окна (POST /api/v1/operator/window/close)
   const handleCloseWindow = async () => {
     try {
       const closeRequest: CloseWindowRequest = {
         activeClientAction: currentTicket ? ActiveClientAction.RETURN_TO_QUEUE : undefined
       };
-      // Интеграция: await fetch(`/api/v1/operator/window/close`, { method: 'POST', body: JSON.stringify(closeRequest) });
+      // await fetch(`/api/v1/operator/window/close`, { method: 'POST', body: JSON.stringify(closeRequest) });
       setWindowStatus(WindowStatus.CLOSED);
       setCurrentTicket(null);
     } catch (e) {
@@ -64,7 +57,7 @@ export default function OperatorWorkspacePage() {
     }
   };
 
-  // 3. Вызов следующего клиента (POST /api/v1/operator/ticket/next)
+  // Вызов следующего клиента (POST /api/v1/operator/ticket/next)
   const handleCallNext = async () => {
     try {
       if (windowStatus !== WindowStatus.OPEN) {
@@ -108,36 +101,36 @@ export default function OperatorWorkspacePage() {
     }
   };
 
-  // 4. Завершение обслуживания (POST /api/v1/operator/ticket/finish)
+  // Завершение обслуживания (POST /api/v1/operator/ticket/finish)
   const handleFinishServing = async () => {
     if (!currentTicket) return;
-    // Интеграция: await fetch(`/api/v1/operator/ticket/finish`, { method: 'POST' });
+    // await fetch(`/api/v1/operator/ticket/finish`, { method: 'POST' });
     setCurrentTicket(null);
     alert("Обслуживание клиента успешно завершено.");
   };
 
-  // 5. Возврат клиента в общую очередь (POST /api/v1/operator/ticket/return)
+  // Возврат клиента в общую очередь (POST /api/v1/operator/ticket/return)
   const handleReturnToQueue = async () => {
     if (!currentTicket) return;
     if (confirm("Вы уверены, что хотите вернуть клиента обратно в пул очереди?")) {
-      // Интеграция: await fetch(`/api/v1/operator/ticket/return`, { method: 'POST' });
+      // await fetch(`/api/v1/operator/ticket/return`, { method: 'POST' });
       setCurrentTicket(null);
       alert("Клиент возвращен в очередь со статусом RETURNED.");
     }
   };
 
-  // 6. Перенаправление в другое окно (POST /api/v1/operator/ticket/redirect)
+  // Перенаправление в другое окно (POST /api/v1/operator/ticket/redirect)
   const handleRedirectTicket = async () => {
     if (!currentTicket) return;
     const targetWindow = prompt("Введите номер окна оператора для перенаправления:");
     if (targetWindow) {
-      // Интеграция: по контракту шлем RedirectTicketRequest
+      // по контракту RedirectTicketRequest
       setCurrentTicket(null);
       alert(`Талон успешно перенаправлен в окно №${targetWindow}.`);
     }
   };
 
-  // 7. Фиксация проблемы/Инцидента (POST /api/v1/operator/issue/report)
+  // Фиксация проблемы/Инцидента (POST /api/v1/operator/issue/report)
   const handleReportIssue = async (type: IssueType) => {
     try {
       const issuePayload: ReportIssueRequest = {
@@ -146,7 +139,7 @@ export default function OperatorWorkspacePage() {
         type: type,
         description: type === IssueType.TECHNICAL ? "Сбой периферийного оборудования" : "Операционный конфликт"
       };
-      // Интеграция: await fetch(`/api/v1/operator/issue/report`, { method: 'POST', body: JSON.stringify(issuePayload) });
+      // await fetch(`/api/v1/operator/issue/report`, { method: 'POST', body: JSON.stringify(issuePayload) });
       alert(`Инцидент [${type}] зафиксирован в Журнале отклонений.`);
     } catch (e) {
       console.error("Ошибка фиксации инцидента", e);
@@ -168,7 +161,7 @@ export default function OperatorWorkspacePage() {
         <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-slate-200/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-xl font-black text-blue-900">Окно обслуживания №{windowNumber}</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Филиал ОПС №7701 • Контур ПочтаТех</p>
+            <p className="text-xs text-slate-400 mt-0.5">Филиал ОПС №{branchId} • Контур ПочтаТех</p>
           </div>
           
           <div className="flex items-center gap-2">
@@ -212,25 +205,25 @@ export default function OperatorWorkspacePage() {
                     onClick={handleFinishServing}
                     className="py-3.5 bg-green-700 hover:bg-green-800 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-green-200 active:scale-[0.98]"
                   >
-                    ✓ Завершить прием
+                    Завершить прием
                   </button>
                   <button 
                     onClick={handleCallNext}
                     className="py-3.5 bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-200 active:scale-[0.98]"
                   >
-                    ⏭ Вызвать следующего
+                    Вызвать следующего
                   </button>
                   <button 
                     onClick={handleReturnToQueue}
                     className="py-3.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl transition-all active:scale-[0.98]"
                   >
-                    ↩ Вернуть в очередь
+                    Вернуть в очередь
                   </button>
                   <button 
                     onClick={handleRedirectTicket}
                     className="py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all active:scale-[0.98]"
                   >
-                    ⇄ Перенаправить талон
+                    Перенаправить талон
                   </button>
                 </div>
               </div>
@@ -303,13 +296,13 @@ export default function OperatorWorkspacePage() {
                 onClick={() => handleReportIssue(IssueType.TECHNICAL)}
                 className="w-full py-2.5 border border-red-200 bg-red-50/30 text-red-600 hover:bg-red-50 text-[11px] font-bold rounded-xl transition-all"
               >
-                ⚠️ Технический сбой (Железо / Сеть)
+                Технический сбой (Железо / Сеть)
               </button>
               <button 
                 onClick={() => handleReportIssue(IssueType.OPERATIONAL)}
                 className="w-full py-2.5 border border-amber-200 bg-amber-50/20 text-amber-700 hover:bg-amber-50 text-[11px] font-bold rounded-xl transition-all"
               >
-                🚨 Операционная проблема (Конфликт)
+                Операционная проблема (Конфликт)
               </button>
             </div>
 

@@ -42,13 +42,13 @@ export default function QrCodeEntryPage() {
         queueEntry: null,
         queuePosition: 3,
         expectedWaitMinutes: 12,
-        sessionToken: `token-secure-uuid-${Math.random()}` // Секретный токен для localStorage
+        sessionToken: `token-secure-uuid-${Math.random()}` // токен для localStorage
       };
 
-      // Фиксируем полный TicketResponse в памяти устройства
+      // полный TicketResponse в памяти устройства
       localStorage.setItem('ops_active_ticket', JSON.stringify(mockServerResponse));
 
-      // Направляем на живой талон по его номеру
+      // направляем на живой талон по его номеру
       router.push(`/client/${branchId}/ticket/${mockServerResponse.ticket.number}`);
     } catch (e) {
       console.error("Критический сбой API при входе через QR", e);
