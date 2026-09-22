@@ -4,6 +4,9 @@ import { useState, Suspense } from 'react';
 import { MOCK_SLOTS } from '../../../../src/mocks/data';
 import { CreateAppointmentRequest, TicketResponse, TicketSource, TicketStatus } from '../../../types';
 
+// Переключатель режима 
+const USE_MOCKS = true; 
+
 function BookingContent() {
   const router = useRouter();
   const { branchId } = useParams();
@@ -37,47 +40,59 @@ function BookingContent() {
 
   const handleFinalConfirm = async () => {
     try {
-      // const appointmentPayload: CreateAppointmentRequest = {
-      //   branchId: branchId as string,
-      //   serviceId: serviceId,
-      //   scheduledAt: `${scheduledDateStr}T${selectedTime}:00Z`,
-      //   sessionId: null,
-      //   clientName: "Иван Клиент",
-      //   clientPhone: "+79991112233"
-      // };
+      let mockTicketResponse: TicketResponse;
 
-      // Мокаем финальный TicketResponse от сервера
-      const targetTicketNumber = rescheduleTicketId || `P-${Math.floor(Math.random() * 89) + 10}`;
-      
-      const mockTicketResponse: TicketResponse = {
-        ticket: {
-          id: `t-uuid-${Math.random()}`,
+      if (USE_MOCKS) {
+        // MOCK
+        const targetTicketNumber = rescheduleTicketId || `P-${Math.floor(Math.random() * 89) + 10}`;
+        mockTicketResponse = {
+          ticket: {
+            id: `t-uuid-${Math.random()}`,
+            branchId: branchId as string,
+            serviceId: serviceId,
+            queueId: 'q-zone-1',
+            appointmentId: `app-uuid-${Math.random()}`,
+            sessionId: `s-uuid-${Math.random()}`,
+            source: TicketSource.APPOINTMENT,
+            number: targetTicketNumber,
+            status: rescheduleTicketId ? TicketStatus.TRANSFERRED : TicketStatus.CREATED,
+            currentWindowId: null,
+            currentQueueEntryId: null,
+            parentTicketId: null,
+            bookedSlotTime: new Date(`${scheduledDateStr}T${selectedTime}:00Z`),
+            createdAt: new Date(),
+            calledAt: null,
+            servingAt: null,
+            completedAt: null,
+            cancelledAt: null,
+            updatedAt: new Date()
+          },
+          queueEntry: null,
+          queuePosition: null,
+          expectedWaitMinutes: 15,
+          sessionToken: `secure-session-token-${Math.random()}`
+        };
+      } else {
+        // API
+        const payload: CreateAppointmentRequest = {
           branchId: branchId as string,
           serviceId: serviceId,
-          queueId: 'q-zone-1',
-          appointmentId: `app-uuid-${Math.random()}`,
-          sessionId: `s-uuid-${Math.random()}`,
-          source: TicketSource.APPOINTMENT, // Строго по энуму архитектора
-          number: targetTicketNumber,
-          status: rescheduleTicketId ? TicketStatus.TRANSFERRED : TicketStatus.CREATED,
-          currentWindowId: null,
-          currentQueueEntryId: null,
-          parentTicketId: null,
-          bookedSlotTime: new Date(`${scheduledDateStr}T${selectedTime}:00Z`),
-          createdAt: new Date(),
-          calledAt: null,
-          servingAt: null,
-          completedAt: null,
-          cancelledAt: null,
-          updatedAt: new Date()
-        },
-        queueEntry: null,
-        queuePosition: null,
-        expectedWaitMinutes: 15,
-        sessionToken: `secure-session-token-${Math.random()}`
-      };
+          scheduledAt: `${scheduledDateStr}T${selectedTime}:00Z`,
+          sessionId: null,
+          clientName: "Иван Клиент",
+          clientPhone: "+79991112233"
+        };
 
-      // Перезаписываем / создаем чистую сессию с новым временем
+        const res = await fetch(`/api/v1/branches/${branchId}/appointments`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error("Ошибка сервера при создании записи");
+        mockTicketResponse = await res.json();
+      }
+
       localStorage.setItem('ops_active_ticket', JSON.stringify(mockTicketResponse));
 
       if (rescheduleTicketId) {

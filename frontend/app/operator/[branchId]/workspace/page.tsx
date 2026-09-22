@@ -1,6 +1,7 @@
 'use client';
+
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { OPERATOR_SERVICES } from '../../../../src/mocks/data';
 import { 
   WindowStatus, 
@@ -11,147 +12,335 @@ import {
   CallNextResponse,
   ReportIssueRequest,
   OpenWindowRequest,
-  CloseWindowRequest
+  CloseWindowRequest,
+  RedirectTicketRequest,
+  Ticket
 } from '../../../types';
 
+// Переключатель режима
+const USE_MOCKS = true;
+
 export default function OperatorWorkspacePage() {
+  const router = useRouter();
+  const params = useParams();
+
   const [windowNumber, setWindowNumber] = useState<number>(1);
+  const [windowId, setWindowId] = useState<string>('');
+  const [operatorId, setOperatorId] = useState<string>('');
+  const [branchId, setBranchId] = useState<string>((params?.branchId as string) || 'branch-1');
+
   const [windowStatus, setWindowStatus] = useState<WindowStatus>(WindowStatus.CLOSED);
   const [selectedServices, setSelectedServices] = useState<string[]>(['send', 'receive']);
-  const { branchId } = useParams();
   
-  const [currentTicket, setCurrentTicket] = useState<any | null>(null);
+  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null);
 
-  // Считываем номер окна из сессии при инициализации экрана
+  // Считываем данные сохраненной сессии при загрузке страницы
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedWindow = sessionStorage.getItem('operator_window');
-      if (savedWindow) setWindowNumber(parseInt(savedWindow, 10));
+      const savedSession = sessionStorage.getItem('operator_session');
+      
+      if (savedSession) {
+        try {
+          const session = JSON.parse(savedSession);
+          if (session.windowNumber) setWindowNumber(Number(session.windowNumber));
+          if (session.windowId) setWindowId(session.windowId);
+          if (session.operatorId) setOperatorId(session.operatorId);
+          if (session.branchId) setBranchId(session.branchId);
+          if (session.serviceIds && Array.isArray(session.serviceIds)) {
+            setSelectedServices(session.serviceIds);
+          }
+        } catch (e) {
+          console.error('Ошибка парсинга operator_session:', e);
+        }
+      } else {
+        const savedWindow = sessionStorage.getItem('operator_window');
+        if (savedWindow) setWindowNumber(parseInt(savedWindow, 10));
+      }
     }
   }, []);
 
-  // Открытие смены окна (POST /api/v1/operator/window/open)
+  // Открытие смены окна
   const handleOpenWindow = async () => {
     try {
       const openRequest: OpenWindowRequest = {
         serviceIds: selectedServices
       };
-      // await fetch(`/api/v1/operator/window/open`, { method: 'POST', body: JSON.stringify(openRequest) });
-      setWindowStatus(WindowStatus.OPEN);
-    } catch (e) {
-      console.error("Ошибка открытия окна обслуживания", e);
+
+      if (USE_MOCKS) {
+        // MOCK
+        await new Promise((res) => setTimeout(res, 300));
+        setWindowStatus(WindowStatus.OPEN);
+      } else {
+        // API 
+        const targetWindowId = windowId || `w-uuid-${windowNumber}`;
+        const res = await fetch(`/api/v1/branches/${branchId}/windows/${targetWindowId}/open`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(openRequest),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка открытия окна');
+        }
+
+        setWindowStatus(WindowStatus.OPEN);
+      }
+    } catch (e: any) {
+      console.error('Ошибка открытия окна обслуживания:', e);
+      alert(e.message || 'Ошибка при открытии смены окна');
     }
   };
 
-  // Закрытие смены окна (POST /api/v1/operator/window/close)
+  // Закрытие смены окна
   const handleCloseWindow = async () => {
     try {
       const closeRequest: CloseWindowRequest = {
         activeClientAction: currentTicket ? ActiveClientAction.RETURN_TO_QUEUE : undefined
       };
-      // await fetch(`/api/v1/operator/window/close`, { method: 'POST', body: JSON.stringify(closeRequest) });
-      setWindowStatus(WindowStatus.CLOSED);
-      setCurrentTicket(null);
-    } catch (e) {
-      console.error("Ошибка закрытия окна обслуживания", e);
-    }
-  };
 
-  // Вызов следующего клиента (POST /api/v1/operator/ticket/next)
-  const handleCallNext = async () => {
-    try {
-      if (windowStatus !== WindowStatus.OPEN) {
-        alert("Сначала откройте окно для обслуживания!");
-        return;
+      if (USE_MOCKS) {
+        // MOCK 
+        await new Promise((res) => setTimeout(res, 300));
+        setWindowStatus(WindowStatus.CLOSED);
+        setCurrentTicket(null);
+      } else {
+        // API 
+        const targetWindowId = windowId || `w-uuid-${windowNumber}`;
+        const res = await fetch(`/api/v1/branches/${branchId}/windows/${targetWindowId}/close`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(closeRequest),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка закрытия окна');
+        }
+
+        setWindowStatus(WindowStatus.CLOSED);
+        setCurrentTicket(null);
       }
-
-      // Симулируем ответ CallNextResponse от бэкенда
-      const sources = [TicketSource.APPOINTMENT, TicketSource.QR, TicketSource.LIVE];
-      const randomSource = sources[Math.floor(Math.random() * sources.length)];
-      const prefix = randomSource === TicketSource.APPOINTMENT ? 'P' : randomSource === TicketSource.QR ? 'QR' : 'L';
-      
-      const mockCallNextResponse: CallNextResponse = {
-        ticket: {
-          id: `t-uuid-${Math.random()}`,
-          branchId: "7701",
-          serviceId: selectedServices[0] || 'send',
-          queueId: 'q-zone-main',
-          appointmentId: randomSource === TicketSource.APPOINTMENT ? 'app-123' : null,
-          sessionId: `session-client-uuid-${Math.random()}`,
-          source: randomSource,
-          number: `${prefix}-${Math.floor(Math.random() * 89) + 10}`,
-          status: TicketStatus.CALLED,
-          currentWindowId: `w-uuid-${windowNumber}`,
-          currentQueueEntryId: `qe-uuid-${Math.random()}`,
-          parentTicketId: null,
-          bookedSlotTime: null,
-          createdAt: new Date(),
-          calledAt: new Date(),
-          servingAt: null,
-          completedAt: null,
-          cancelledAt: null,
-          updatedAt: new Date()
-        },
-        queueEntry: null
-      };
-
-      setCurrentTicket(mockCallNextResponse.ticket);
-    } catch (e) {
-      console.error("Ошибка вызова следующего талона", e);
+    } catch (e: any) {
+      console.error('Ошибка закрытия окна обслуживания:', e);
+      alert(e.message || 'Ошибка при закрытии смены окна');
     }
   };
 
-  // Завершение обслуживания (POST /api/v1/operator/ticket/finish)
+  // Вызов следующего клиента
+  const handleCallNext = async () => {
+    if (windowStatus === WindowStatus.CLOSED) {
+      alert('Сначала откройте окно для обслуживания!');
+      return;
+    }
+
+    try {
+      if (USE_MOCKS) {
+        // MOCK 
+        await new Promise((res) => setTimeout(res, 300));
+        const sources = [TicketSource.APPOINTMENT, TicketSource.QR, TicketSource.LIVE];
+        const randomSource = sources[Math.floor(Math.random() * sources.length)];
+        const prefix = randomSource === TicketSource.APPOINTMENT ? 'P' : randomSource === TicketSource.QR ? 'QR' : 'L';
+        
+        const mockCallNextResponse: CallNextResponse = {
+          ticket: {
+            id: `t-uuid-${Math.random().toString(36).substring(2, 9)}`,
+            branchId: branchId,
+            serviceId: selectedServices[0] || 'send',
+            queueId: 'q-zone-main',
+            appointmentId: randomSource === TicketSource.APPOINTMENT ? 'app-123' : null,
+            sessionId: `session-client-${Math.random().toString(36).substring(2, 9)}`,
+            source: randomSource,
+            number: `${prefix}-${Math.floor(Math.random() * 89) + 10}`,
+            status: TicketStatus.CALLED,
+            currentWindowId: windowId || `w-uuid-${windowNumber}`,
+            currentQueueEntryId: `qe-uuid-${Math.random().toString(36).substring(2, 9)}`,
+            parentTicketId: null,
+            bookedSlotTime: null,
+            createdAt: new Date(),
+            calledAt: new Date(),
+            servingAt: null,
+            completedAt: null,
+            cancelledAt: null,
+            updatedAt: new Date()
+          },
+          queueEntry: null
+        };
+
+        setCurrentTicket(mockCallNextResponse.ticket);
+      } else {
+        // API 
+        const targetWindowId = windowId || `w-uuid-${windowNumber}`;
+        const res = await fetch(`/api/v1/branches/${branchId}/operator/tickets/next`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ windowId: targetWindowId, serviceIds: selectedServices }),
+        });
+
+        if (!res.ok) {
+          if (res.status === 404) {
+            alert('Очередь пуста. Нет клиентов на обслуживание.');
+            return;
+          }
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка вызова следующего талона');
+        }
+
+        const data: CallNextResponse = await res.json();
+        setCurrentTicket(data.ticket);
+      }
+    } catch (e: any) {
+      console.error('Ошибка вызова следующего талона:', e);
+      alert(e.message || 'Не удалось вызвать следующего клиента');
+    }
+  };
+
+  // Завершение обслуживания 
   const handleFinishServing = async () => {
     if (!currentTicket) return;
-    // await fetch(`/api/v1/operator/ticket/finish`, { method: 'POST' });
-    setCurrentTicket(null);
-    alert("Обслуживание клиента успешно завершено.");
+
+    try {
+      if (USE_MOCKS) {
+        // MOCK 
+        await new Promise((res) => setTimeout(res, 200));
+        setCurrentTicket(null);
+        alert('Обслуживание клиента успешно завершено.');
+      } else {
+        // API 
+        const res = await fetch(`/api/v1/branches/${branchId}/operator/tickets/${currentTicket.id}/finish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка завершения приема');
+        }
+
+        setCurrentTicket(null);
+        alert('Обслуживание клиента успешно завершено.');
+      }
+    } catch (e: any) {
+      console.error('Ошибка завершения приема:', e);
+      alert(e.message || 'Ошибка при завершении приема');
+    }
   };
 
-  // Возврат клиента в общую очередь (POST /api/v1/operator/ticket/return)
+  // Возврат клиента в общую очередь
   const handleReturnToQueue = async () => {
     if (!currentTicket) return;
-    if (confirm("Вы уверены, что хотите вернуть клиента обратно в пул очереди?")) {
-      // await fetch(`/api/v1/operator/ticket/return`, { method: 'POST' });
-      setCurrentTicket(null);
-      alert("Клиент возвращен в очередь со статусом RETURNED.");
+    if (!confirm('Вы уверены, что хотите вернуть клиента обратно в пул очереди?')) return;
+
+    try {
+      if (USE_MOCKS) {
+        // MOCK 
+        await new Promise((res) => setTimeout(res, 200));
+        setCurrentTicket(null);
+        alert('Клиент возвращен в очередь.');
+      } else {
+        // API 
+        const res = await fetch(`/api/v1/branches/${branchId}/operator/tickets/${currentTicket.id}/return`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка возврата в очередь');
+        }
+
+        setCurrentTicket(null);
+        alert('Клиент возвращен в очередь.');
+      }
+    } catch (e: any) {
+      console.error('Ошибка возврата талона:', e);
+      alert(e.message || 'Не удалось вернуть клиента в очередь');
     }
   };
 
-  // Перенаправление в другое окно (POST /api/v1/operator/ticket/redirect)
+  // Перенаправление в другое окно
   const handleRedirectTicket = async () => {
     if (!currentTicket) return;
-    const targetWindow = prompt("Введите номер окна оператора для перенаправления:");
-    if (targetWindow) {
-      // по контракту RedirectTicketRequest
-      setCurrentTicket(null);
-      alert(`Талон успешно перенаправлен в окно №${targetWindow}.`);
+    const targetWindowNumber = prompt('Введите номер окна оператора для перенаправления:');
+    if (!targetWindowNumber) return;
+
+    try {
+      if (USE_MOCKS) {
+        // MOCK 
+        await new Promise((res) => setTimeout(res, 200));
+        setCurrentTicket(null);
+        alert(`Талон успешно перенаправлен в окно №${targetWindowNumber}.`);
+      } else {
+        // API 
+        const payload: RedirectTicketRequest = {
+          targetWindowId: windowId,
+          targetServiceId: branchId,
+          targetQueueId: currentTicket.number
+        };
+
+        const res = await fetch(`/api/v1/branches/${branchId}/operator/tickets/${currentTicket.id}/redirect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка перенаправления талона');
+        }
+
+        setCurrentTicket(null);
+        alert(`Талон успешно перенаправлен в окно №${targetWindowNumber}.`);
+      }
+    } catch (e: any) {
+      console.error('Ошибка перенаправления:', e);
+      alert(e.message || 'Не удалось перенаправить талон');
     }
   };
 
-  // Фиксация проблемы/Инцидента (POST /api/v1/operator/issue/report)
+  // Фиксация проблемы/Инцидента 
   const handleReportIssue = async (type: IssueType) => {
     try {
       const issuePayload: ReportIssueRequest = {
-        branchId: "7701",
-        windowId: `w-uuid-${windowNumber}`,
+        branchId: branchId,
+        windowId: windowId || `w-uuid-${windowNumber}`,
         type: type,
-        description: type === IssueType.TECHNICAL ? "Сбой периферийного оборудования" : "Операционный конфликт"
+        description: type === IssueType.TECHNICAL ? 'Сбой периферийного оборудования' : 'Операционный конфликт'
       };
-      // await fetch(`/api/v1/operator/issue/report`, { method: 'POST', body: JSON.stringify(issuePayload) });
-      alert(`Инцидент [${type}] зафиксирован в Журнале отклонений.`);
-    } catch (e) {
-      console.error("Ошибка фиксации инцидента", e);
+
+      if (USE_MOCKS) {
+        // MOCK 
+        await new Promise((res) => setTimeout(res, 200));
+        alert(`Инцидент [${type}] зафиксирован в Журнале отклонений.`);
+      } else {
+        // API 
+        const res = await fetch(`/api/v1/operator/issue/report`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(issuePayload),
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.message || 'Ошибка регистрации инцидента');
+        }
+
+        alert(`Инцидент [${type}] зафиксирован в Журнале отклонений.`);
+      }
+    } catch (e: any) {
+      console.error('Ошибка фиксации инцидента:', e);
+      alert(e.message || 'Не удалось отправить сообщение об инциденте');
     }
   };
 
-  // Переключатель галочек услуг
+  // Переключатель чекбоксов услуг
   const toggleService = (id: string) => {
     setSelectedServices(prev => 
       prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]
     );
   };
+
+  const isWindowOpen = windowStatus !== WindowStatus.CLOSED;
 
   return (
     <div className="min-h-screen bg-slate-100 p-4 sm:p-6 text-slate-900 font-sans">
@@ -160,14 +349,18 @@ export default function OperatorWorkspacePage() {
         {/* Шапка управления окном */}
         <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-slate-200/60 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-xl font-black text-blue-900">Окно обслуживания №{windowNumber}</h1>
-            <p className="text-xs text-slate-400 mt-0.5">Филиал ОПС №{branchId} • Контур ПочтаТех</p>
+            <h1 className="text-xl font-black text-blue-900">
+              Окно обслуживания №{windowNumber}
+            </h1>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Филиал ОПС №{branchId} {operatorId && `• Оператор: ${operatorId}`}
+            </p>
           </div>
           
           <div className="flex items-center gap-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${windowStatus === WindowStatus.OPEN ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+            <span className={`w-2.5 h-2.5 rounded-full ${isWindowOpen ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              {windowStatus === WindowStatus.OPEN ? 'Смена открыта' : 'Смена закрыта'}
+              {isWindowOpen ? 'Смена открыта' : 'Смена закрыта'}
             </span>
           </div>
         </div>
@@ -175,11 +368,13 @@ export default function OperatorWorkspacePage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Левая колонка: Управление текущим талоном */}
           <div className="md:col-span-2 bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-slate-200/60 flex flex-col justify-between min-h-[400px]">
-            {windowStatus === WindowStatus.CLOSED ? (
+            {!isWindowOpen ? (
               <div className="flex flex-col items-center justify-center flex-1 text-center p-6">
-                <div className="text-3xl mb-2">🔒</div>
+                <div className="text-3xl mb-2"></div>
                 <h3 className="font-extrabold text-slate-700">Окно заблокировано</h3>
-                <p className="text-xs text-slate-400 max-w-xs mt-1">Выберите оказываемые услуги в правой панели и откройте смену окна для начала работы</p>
+                <p className="text-xs text-slate-400 max-w-xs mt-1">
+                  Выберите оказываемые услуги в правой панели и откройте смену окна для начала работы
+                </p>
               </div>
             ) : currentTicket ? (
               <div className="space-y-6 flex-1 flex flex-col justify-between">
@@ -229,9 +424,11 @@ export default function OperatorWorkspacePage() {
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center flex-1 text-center p-6">
-                <div className="text-4xl mb-3 animate-pulse">📢</div>
+                <div className="text-4xl mb-3 animate-pulse"></div>
                 <h3 className="font-extrabold text-slate-700">Окно свободно</h3>
-                <p className="text-xs text-slate-400 mb-6">В очереди есть клиенты. Нажмите кнопку ниже, чтобы пригласить следующего талона к вашему окну</p>
+                <p className="text-xs text-slate-400 mb-6">
+                  В очереди есть клиенты. Нажмите кнопку ниже, чтобы пригласить следующего клиента
+                </p>
                 <button 
                   onClick={handleCallNext}
                   className="px-8 py-3.5 bg-blue-900 hover:bg-blue-950 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-blue-200"
@@ -259,7 +456,7 @@ export default function OperatorWorkspacePage() {
                       type="checkbox" 
                       checked={selectedServices.includes(srv.id)} 
                       onChange={() => toggleService(srv.id)}
-                      disabled={windowStatus === WindowStatus.OPEN}
+                      disabled={isWindowOpen}
                       className="rounded text-blue-700 focus:ring-blue-500 w-4 h-4 disabled:opacity-50"
                     />
                     <div>
@@ -270,7 +467,7 @@ export default function OperatorWorkspacePage() {
                 ))}
               </div>
 
-              {windowStatus === WindowStatus.CLOSED ? (
+              {!isWindowOpen ? (
                 <button 
                   onClick={handleOpenWindow}
                   className="w-full py-3 bg-blue-900 hover:bg-blue-950 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-100"
@@ -290,7 +487,9 @@ export default function OperatorWorkspacePage() {
             {/* Фиксация проблем (Кнопки SOS) */}
             <div className="bg-white rounded-3xl p-5 shadow-xl shadow-slate-200/50 border border-slate-200/60 space-y-2">
               <h3 className="font-extrabold text-sm text-slate-800 mb-1">Инциденты и Сбои</h3>
-              <p className="text-[11px] text-slate-400 leading-normal pb-2">При возникновении непредвиденной ситуации зафиксируйте ошибку для логов:</p>
+              <p className="text-[11px] text-slate-400 leading-normal pb-2">
+                При возникновении непредвиденной ситуации зафиксируйте ошибку для логов:
+              </p>
               
               <button 
                 onClick={() => handleReportIssue(IssueType.TECHNICAL)}
