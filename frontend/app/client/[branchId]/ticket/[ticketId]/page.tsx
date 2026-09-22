@@ -28,7 +28,7 @@ export default function TicketPage() {
         
         const sessionData: TicketResponse = JSON.parse(savedSession);
         
-        const res = await fetch(`/api/v1/branches/${branchId}/tickets/${ticketId}`, {
+        const res = await fetch(`http://localhost:3001/api/tickets/${ticketId}`, {
           headers: { 
             'Authorization': `${sessionData.sessionToken}`,
             'Content-Type': 'application/json' 
