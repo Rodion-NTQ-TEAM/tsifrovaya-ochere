@@ -2,14 +2,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Deviation } from '../../../types';
-
-// Моковые данные журнала инцидентов на основе структуры Deviation
-const INITIAL_DEVIATIONS: Deviation[] = [
-  { ticketId: 'P-12', type: 'SLA_BREACH', description: 'Время ожидания в очереди превысило лимит (24 мин)', createdAt: new Date('2026-09-20T10:15:00Z') },
-  { ticketId: 'V-45', type: 'NO_SHOW', description: 'Клиент не явился к окну №2 после 3 повторных вызовов', createdAt: new Date('2026-09-20T10:42:00Z') },
-  { ticketId: null, type: 'WINDOW_ISSUE', description: 'Окно №3 зафиксировало технический сбой (периферия)', createdAt: new Date('2026-09-20T11:05:00Z') },
-  { ticketId: 'F-03', type: 'OPERATIONAL', description: 'Операционный конфликт: ручное перенаправление из-за пиковой нагрузки', createdAt: new Date('2026-09-20T11:18:00Z') },
-];
+import { INITIAL_DEVIATIONS } from '../../../../src/mocks/data';
 
 export default function ManagerDeviationsPage() {
   const { branchId } = useParams();
@@ -26,14 +19,13 @@ export default function ManagerDeviationsPage() {
   // Функция выгрузки в CSV
   const handleExportToCsv = () => {
     try {
-      // заголовки
       const headers = ['Талон', 'Тип инцидента', 'Описание сбоя', 'Дата и время'];
       
       // массив объектов Deviation в строки таблицы
       const rows = filteredDeviations.map(d => [
         d.ticketId || 'Системный сбой',
         d.type,
-        `"${d.description.replace(/"/g, '""')}"`, // Экранируем кавычки для корректного чтения в Excel
+        `"${d.description.replace(/"/g, '""')}"`,
         d.createdAt.toISOString()
       ]);
 
@@ -151,7 +143,7 @@ export default function ManagerDeviationsPage() {
           </div>
         </div>
 
-        {/* Дополнительная кнопка навигации назад на Дашборд руководителя */}
+        {/* Дополнительная кнопка навигации */}
         <button 
           onClick={() => router.push(`/manager/${branchId}/dashboard`)}
           className="text-xs font-bold text-slate-400 hover:text-blue-900 transition-colors block mx-auto pt-2"
