@@ -4,7 +4,7 @@ import { MOCK_SERVICES } from '../../../../src/mocks/data';
 
 export default function ServicesPage() {
   const router = useRouter();
-  const { branchId } = useParams(); // Считываем [branchId] из пути браузера
+  const { branchId } = useParams();
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 text-slate-900">

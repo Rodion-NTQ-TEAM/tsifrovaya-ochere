@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { INITIAL_WINDOWS } from '../../../../src/mocks/data';
 import { 
   PriorityConfig, 
   ActiveClientAction, 
@@ -8,11 +9,7 @@ import {
   PriorityRule
 } from '../../../types';
 
-const INITIAL_WINDOWS = [
-  { id: 'w-1', number: 1, name: 'Окно 1', status: WindowStatus.OPEN, serviceIds: ['send', 'receive'] },
-  { id: 'w-2', number: 2, name: 'Окно 2', status: WindowStatus.OPEN, serviceIds: ['send'] },
-  { id: 'w-3', number: 3, name: 'Окно 3', status: WindowStatus.PAUSED, serviceIds: ['finance'] },
-];
+
 
 export default function ManagerManagementPage() {
   const { branchId } = useParams();
@@ -105,7 +102,7 @@ export default function ManagerManagementPage() {
         configuration: config
       };
 
-      // Интеграция: await fetch(`/api/v1/manager/queue/rules`, { method: 'PUT', body: JSON.stringify(payload) });
+      // await fetch(`/api/v1/manager/queue/rules`, { method: 'PUT', body: JSON.stringify(payload) });
 
       alert("Параметры алгоритма успешно обновлены! Пересчет приоритетов в пуле FIFO запущен.");
     } catch (e) {
@@ -115,7 +112,7 @@ export default function ManagerManagementPage() {
 
   // новые конфигурации окон
   const handleSaveWindowsConfig = async () => {
-    // Интеграция: await fetch(`/api/v1/manager/windows/config`, { method: 'PUT', body: JSON.stringify(windows) });
+    // await fetch(`/api/v1/manager/windows/config`, { method: 'PUT', body: JSON.stringify(windows) });
     alert("Конфигурация услуг для окон успешно обновлена. Операторы уведомлены.");
   };
   return (
@@ -130,7 +127,7 @@ export default function ManagerManagementPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Левая интерактивная панель (Занимает 2 колонки из 3) */}
+          {/* Левая интерактивная панель */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border border-slate-200/60 space-y-6">
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -285,7 +282,7 @@ export default function ManagerManagementPage() {
                       <input 
                         type="checkbox"
                         checked={win.serviceIds.includes('another')}
-                        onChange={() => handleToggleWindowService(win.id, 'finance')}
+                        onChange={() => handleToggleWindowService(win.id, 'another')}
                         className="rounded text-blue-700 w-3.5 h-3.5"
                       />
                       <span>другое</span>
