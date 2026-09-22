@@ -51,7 +51,7 @@ const handleJoinQueueByQr = async (serviceId: string) => {
           sessionId: null,
         };
 
-        const res = await fetch(`http://localhost:3001/api/tickets/qr`, {
+        const res = await fetch(`http://localhost:3000/api/tickets/qr`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(qrPayload)

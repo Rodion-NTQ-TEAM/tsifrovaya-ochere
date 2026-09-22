@@ -171,7 +171,7 @@ export default function OperatorWorkspacePage() {
       } else {
         // API 
         const targetWindowId = windowId || `w-uuid-${windowNumber}`;
-        const res = await fetch(`http://localhost:3001/api/operator/windows/${windowId}/call-next`, {
+        const res = await fetch(`http://localhost:3000/api/operator/windows/${windowId}/call-next`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ windowId: targetWindowId, serviceIds: selectedServices }),
@@ -207,7 +207,7 @@ export default function OperatorWorkspacePage() {
         alert('Обслуживание клиента успешно завершено.');
       } else {
         // API 
-        const res = await fetch(`http://localhost:3001/api/operator/windows/${windowId}/finish`, {
+        const res = await fetch(`http://localhost:3000/api/operator/windows/${windowId}/finish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });

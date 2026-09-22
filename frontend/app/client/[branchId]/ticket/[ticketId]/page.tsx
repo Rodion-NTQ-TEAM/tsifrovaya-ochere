@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { TicketResponse, TicketStatus } from '../../../../types';
 
 // Переключатель режима 
-const USE_MOCKS = true; 
+const USE_MOCKS = false; 
 
 export default function TicketPage() {
   const { branchId, ticketId } = useParams();
@@ -28,7 +28,7 @@ export default function TicketPage() {
         
         const sessionData: TicketResponse = JSON.parse(savedSession);
         
-        const res = await fetch(`http://localhost:3001/api/tickets/${ticketId}`, {
+        const res = await fetch(`http://localhost:3000/api/tickets/${ticketId}`, {
           headers: { 
             'Authorization': `${sessionData.sessionToken}`,
             'Content-Type': 'application/json' 
