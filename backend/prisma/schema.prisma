@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TicketSource {
+  APPOINTMENT
+  QR
+  LIVE
+}
+
+enum TicketStatus {
+  CREATED
+  WAITING
+  CALLED
+  SERVING
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RETURNED
+  TRANSFERRED
+}
+
+enum QueueEntryStatus {
+  WAITING
+  CALLED
+  SERVING
+  COMPLETED
+  CANCELLED
+  RETURNED
+  TRANSFERRED
+}
+
+model Branch {
+  id        String    @id @default(uuid())
+  name      String
+
+  services  Service[]
+  queues    Queue[]
+  tickets   Ticket[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Service {
+  id        String    @id @default(uuid())
+  branchId  String
+  name      String
+  isActive  Boolean   @default(true)
+
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  queues    Queue[]
+  tickets   Ticket[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([branchId])
+}
+
+model Queue {
+  id        String    @id @default(uuid())
+  branchId  String
+  serviceId String
+  name      String
+
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  service   Service   @relation(fields: [serviceId], references: [id])
+
+  tickets   Ticket[]
+  entries   QueueEntry[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([branchId])
+  @@index([serviceId])
+}
+
+model Ticket {
+  id                  String        @id @default(uuid())
+  branchId            String
+  serviceId           String
+  queueId             String?
+
+  appointmentId       String?
+  sessionId           String?
+
+  source              TicketSource
+  number              String
+  status              TicketStatus  @default(CREATED)
+
+  currentWindowId     String?
+  currentQueueEntryId String?
+  parentTicketId      String?
+
+  clientName          String?
+
+  bookedSlotTime      DateTime?
+
+  createdAt           DateTime      @default(now())
+  calledAt            DateTime?
+  servingAt           DateTime?
+  completedAt         DateTime?
+  cancelledAt         DateTime?
+  updatedAt           DateTime      @updatedAt
+
+  branch              Branch        @relation(fields: [branchId], references: [id])
+  service             Service       @relation(fields: [serviceId], references: [id])
+  queue               Queue?        @relation(fields: [queueId], references: [id])
+
+  queueEntry          QueueEntry?
+  events              TicketEvent[]
+
+  @@index([branchId])
+  @@index([serviceId])
+  @@index([queueId])
+  @@index([sessionId])
+  @@index([status])
+}
+
+model QueueEntry {
+  id             String           @id @default(uuid())
+  ticketId       String           @unique
+  queueId        String
+  serviceId      String
+
+  priorityLevel  Int              @default(0)
+  sequenceNumber Int
+
+  status         QueueEntryStatus @default(WAITING)
+
+  enteredAt      DateTime         @default(now())
+  scheduledAt    DateTime?
+  calledAt       DateTime?
+  servingAt      DateTime?
+  finishedAt     DateTime?
+
+  windowId       String?
+
+  createdAt      DateTime         @default(now())
+
+  ticket         Ticket           @relation(fields: [ticketId], references: [id])
+  queue          Queue            @relation(fields: [queueId], references: [id])
+
+  @@index([queueId, status])
+  @@index([priorityLevel, sequenceNumber])
+}
+
+model TicketEvent {
+  id          BigInt    @id @default(autoincrement())
+
+  ticketId    String
+
+  eventType   String
+
+  oldStatus   String?
+  newStatus   String?
+
+  operatorId  String?
+  windowId    String?
+  serviceId   String?
+  queueId     String?
+
+  metadata    Json?
+
+  createdAt   DateTime  @default(now())
+
+  ticket      Ticket    @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId])
+  @@index([createdAt])
+}
