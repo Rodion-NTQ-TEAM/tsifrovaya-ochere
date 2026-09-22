@@ -3,6 +3,9 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { TicketResponse, TicketStatus } from '../../../../types';
 
+// Переключатель режима 
+const USE_MOCKS = true; 
+
 export default function TicketPage() {
   const { branchId, ticketId } = useParams();
   const router = useRouter();
@@ -12,47 +15,56 @@ export default function TicketPage() {
   const [activeWindow, setActiveWindow] = useState<string | null>(null);
 
   useEffect(() => {
-    // поллинг статуса талона каждые 4 секунды
     const checkStatusFromServer = async () => {
-      // try {
-      //   const savedSession = localStorage.getItem('ops_active_ticket');
-      //   if (!savedSession) return;
+      if (USE_MOCKS) {
+        // MOCK
+        return;
+      }
+
+      // API
+      try {
+        const savedSession = localStorage.getItem('ops_active_ticket');
+        if (!savedSession) return;
         
-      //   const sessionData: TicketResponse = JSON.parse(savedSession);
+        const sessionData: TicketResponse = JSON.parse(savedSession);
         
-      //   // Шлем запрос, авторизуясь через sessionToken от архитектора
-      //   const res = await fetch(`/api/v1/branches/${branchId}/tickets/${ticketId}`, {
-      //     headers: { 'Authorization': `Bearer ${sessionData.sessionToken}` }
-      //   });
+        const res = await fetch(`/api/v1/branches/${branchId}/tickets/${ticketId}`, {
+          headers: { 
+            'Authorization': `${sessionData.sessionToken}`,
+            'Content-Type': 'application/json' 
+          }
+        });
         
-      //   if (res.status === 200) {
-      //     const data: TicketResponse = await res.json();
-          
-      //     if (data.ticket.status === TicketStatus.CALLED) {
-      //       setStatus('Пройдите к окну');
-      //       setActiveWindow(data.ticket.currentWindowId || '4');
-      //       setEta('Сейчас');
-      //       if (navigator.vibrate) navigator.vibrate(200);
-      //     }
-      //   }
-      // } catch (e) {
-      //   console.error("Ошибка авто-обновления статуса талона", e);
-      // }
+        if (res.ok) {
+          const data: TicketResponse = await res.json();
+          if (data.ticket.status === TicketStatus.CALLED) {
+            setStatus('Пройдите к окну');
+            setActiveWindow(data.ticket.currentWindowId || '4');
+            setEta('Сейчас');
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+          }
+        }
+      } catch (e) {
+        console.error("Ошибка авто-обновления статуса талона", e);
+      }
     };
 
     const pollingInterval = setInterval(checkStatusFromServer, 4000);
 
-    // ДЕМО-ЭФФЕКТ: Сработает автономно через 8 сек для демонстрации
-    const demoTimer = setTimeout(() => {
-      setStatus('Пройдите к окну');
-      setActiveWindow('4');
-      setEta('Сейчас');
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-    }, 8000);
+    // Демо-таймаут для MOCK режима
+    let demoTimer: NodeJS.Timeout;
+    if (USE_MOCKS) {
+      demoTimer = setTimeout(() => {
+        setStatus('Пройдите к окну');
+        setActiveWindow('4');
+        setEta('Сейчас');
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      }, 8000);
+    }
 
     return () => {
       clearInterval(pollingInterval);
-      clearTimeout(demoTimer);
+      if (demoTimer) clearTimeout(demoTimer);
     };
   }, [branchId, ticketId]);
 
@@ -62,11 +74,29 @@ export default function TicketPage() {
     }
   };
 
-  const handleCancelTicket = () => {
-    if (confirm('Вы действительно хотите отменить запись и удалить талон?')) {
-      localStorage.removeItem('ops_active_ticket');
-      router.push(`/client/${branchId}/services`);
+  const handleCancelTicket = async () => {
+    if (!confirm('Вы действительно хотите отменить запись и удалить талон?')) return;
+
+    if (!USE_MOCKS) {
+      // API
+      try {
+        const savedSession = localStorage.getItem('ops_active_ticket');
+        const sessionData: TicketResponse = savedSession ? JSON.parse(savedSession) : null;
+        
+        await fetch(`/api/v1/branches/${branchId}/tickets/${ticketId}/cancel`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${sessionData?.sessionToken}`,
+            'Content-Type': 'application/json' 
+          }
+        });
+      } catch (e) {
+        console.error("Ошибка отмены талона", e);
+      }
     }
+
+    localStorage.removeItem('ops_active_ticket');
+    router.push(`/client/${branchId}/services`);
   };
 
   return (

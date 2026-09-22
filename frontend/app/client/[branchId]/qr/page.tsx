@@ -3,52 +3,65 @@ import { useRouter, useParams } from 'next/navigation';
 import { MOCK_SERVICES } from '../../../../src/mocks/data';
 import { CreateTicketByQrRequest, TicketResponse, TicketSource, TicketStatus } from '../../../types';
 
+// Переключатель режима 
+const USE_MOCKS = true; 
+
 export default function QrCodeEntryPage() {
   const router = useRouter();
   const { branchId } = useParams();
 
-  const handleJoinQueueByQr = async (serviceId: string) => {
+const handleJoinQueueByQr = async (serviceId: string) => {
     try {
-      // Подготовка тела запроса по  контракту
-      const qrPayload: CreateTicketByQrRequest = {
-        qrCode: `QR_STATIC_CODE_${branchId}`,
-        serviceId: serviceId,
-        sessionId: null,
-      };
+      let mockServerResponse: TicketResponse;
 
-      // Демо-эмуляция ответа сервера TicketResponse
-      const mockServerResponse: TicketResponse = {
-        ticket: {
-          id: `t-uuid-${Math.random()}`,
-          branchId: branchId as string,
+      if (USE_MOCKS) {
+        // MOCK
+        mockServerResponse = {
+          ticket: {
+            id: `t-uuid-${Math.random()}`,
+            branchId: branchId as string,
+            serviceId: serviceId,
+            queueId: 'q-zone-1',
+            appointmentId: null,
+            sessionId: `s-uuid-${Math.random()}`,
+            source: TicketSource.QR,
+            number: `QR-${Math.floor(Math.random() * 89) + 10}`,
+            status: TicketStatus.WAITING,
+            currentWindowId: null,
+            currentQueueEntryId: `qe-uuid-${Math.random()}`,
+            parentTicketId: null,
+            bookedSlotTime: null,
+            createdAt: new Date(),
+            calledAt: null,
+            servingAt: null,
+            completedAt: null,
+            cancelledAt: null,
+            updatedAt: new Date()
+          },
+          queueEntry: null,
+          queuePosition: 3,
+          expectedWaitMinutes: 12,
+          sessionToken: `token-secure-uuid-${Math.random()}`
+        };
+      } else {
+        // API
+        const qrPayload: CreateTicketByQrRequest = {
+          qrCode: `QR_STATIC_CODE_${branchId}`,
           serviceId: serviceId,
-          queueId: 'q-zone-1',
-          appointmentId: null,
-          sessionId: `s-uuid-${Math.random()}`,
-          source: TicketSource.QR, // Источник талона строго по энуму
-          number: `QR-${Math.floor(Math.random() * 89) + 10}`,
-          status: TicketStatus.WAITING, // Билет сразу встает в очередь
-          currentWindowId: null,
-          currentQueueEntryId: `qe-uuid-${Math.random()}`,
-          parentTicketId: null,
-          bookedSlotTime: null,
-          createdAt: new Date(),
-          calledAt: null,
-          servingAt: null,
-          completedAt: null,
-          cancelledAt: null,
-          updatedAt: new Date()
-        },
-        queueEntry: null,
-        queuePosition: 3,
-        expectedWaitMinutes: 12,
-        sessionToken: `token-secure-uuid-${Math.random()}` // токен для localStorage
-      };
+          sessionId: null,
+        };
 
-      // полный TicketResponse в памяти устройства
+        const res = await fetch(`/api/v1/branches/${branchId}/qr-tickets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(qrPayload)
+        });
+
+        if (!res.ok) throw new Error("Ошибка вставания в очередь по QR");
+        mockServerResponse = await res.json();
+      }
+
       localStorage.setItem('ops_active_ticket', JSON.stringify(mockServerResponse));
-
-      // направляем на живой талон по его номеру
       router.push(`/client/${branchId}/ticket/${mockServerResponse.ticket.number}`);
     } catch (e) {
       console.error("Критический сбой API при входе через QR", e);
